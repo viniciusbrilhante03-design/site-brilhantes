@@ -25,6 +25,22 @@ export default function TeamDialog({ open, onOpenChange }) {
     queryFn: async () => (await api.get("/history")).data,
     enabled: open,
   });
+  const lotQ = useQuery({
+    queryKey: ["loteamentos"],
+    queryFn: async () => (await api.get("/loteamentos")).data,
+    enabled: open,
+  });
+  const [newLot, setNewLot] = useState("");
+
+  const addLotMut = useMutation({
+    mutationFn: (name) => api.post("/loteamentos", { name }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["loteamentos"] }); setNewLot(""); toast.success("Loteamento cadastrado!"); },
+    onError: () => toast.error("Erro ao cadastrar loteamento."),
+  });
+  const delLotMut = useMutation({
+    mutationFn: (id) => api.delete(`/loteamentos/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["loteamentos"] }); toast.success("Loteamento removido."); },
+  });
 
   const activeMut = useMutation({
     mutationFn: ({ id, active }) => api.patch(`/corretores/${id}/active`, { active }),
@@ -50,6 +66,7 @@ export default function TeamDialog({ open, onOpenChange }) {
         <Tabs defaultValue="equipe" className="mt-2">
           <TabsList>
             <TabsTrigger value="equipe" data-testid="tab-equipe">Corretores</TabsTrigger>
+            <TabsTrigger value="loteamentos" data-testid="tab-loteamentos">Loteamentos</TabsTrigger>
             <TabsTrigger value="historico" data-testid="tab-historico"><History className="h-4 w-4 mr-1" /> Histórico</TabsTrigger>
           </TabsList>
 
@@ -87,8 +104,31 @@ export default function TeamDialog({ open, onOpenChange }) {
               ))}
           </TabsContent>
 
-          <TabsContent value="historico" className="space-y-2 mt-3">
-            {histQ.isLoading ? <p className="text-sm text-muted-foreground py-6 text-center">Carregando...</p>
+          <TabsContent value="loteamentos" className="space-y-3 mt-3">
+            <div className="flex items-center gap-2">
+              <Input data-testid="lot-input" value={newLot} onChange={(e) => setNewLot(e.target.value)}
+                placeholder="Nome do novo loteamento" className="h-9"
+                onKeyDown={(e) => { if (e.key === "Enter" && newLot.trim()) addLotMut.mutate(newLot.trim()); }} />
+              <Button data-testid="lot-add" size="sm" disabled={!newLot.trim() || addLotMut.isPending}
+                onClick={() => addLotMut.mutate(newLot.trim())}>Adicionar</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Só o gestor cadastra loteamentos. Os corretores só podem selecionar os já cadastrados.</p>
+            {(lotQ.data || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">Nenhum loteamento cadastrado.</p>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-2">
+                {(lotQ.data || []).map((l) => (
+                  <div key={l.id} data-testid={`lot-${l.id}`} className="flex items-center gap-2 rounded-lg border border-border/60 p-2.5">
+                    <span className="flex-1 text-sm font-medium truncate">{l.name}</span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                      data-testid={`lot-del-${l.id}`} onClick={() => delLotMut.mutate(l.id)}>×</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="historico" className="space-y-2 mt-3">  {histQ.isLoading ? <p className="text-sm text-muted-foreground py-6 text-center">Carregando...</p>
               : (histQ.data || []).length === 0 ? <p className="text-sm text-muted-foreground py-8 text-center">Nenhuma venda excluída.</p>
               : (histQ.data || []).map((h, i) => (
                 <div key={i} data-testid={`hist-${i}`} className="rounded-lg border border-border/60 p-3 flex items-center gap-3 text-sm">

@@ -34,7 +34,7 @@ function addMonths(isoDate, n) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, brokers }) {
+export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, brokers, loteamentos, lockBroker, lockBrokerName }) {
   const [form, setForm] = useState(empty);
   const [numParcelas, setNumParcelas] = useState(1);
 
@@ -44,11 +44,11 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
         setForm({ ...empty, ...initial, broker_split: initial.broker_split ?? 60 });
         setNumParcelas(initial.installments?.length || 1);
       } else {
-        setForm(empty);
+        setForm(lockBroker && lockBrokerName ? { ...empty, broker_name: lockBrokerName } : empty);
         setNumParcelas(1);
       }
     }
-  }, [open, initial]);
+  }, [open, initial, lockBroker, lockBrokerName]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -156,8 +156,11 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Loteamento</div>
             <div className="space-y-1.5">
               <Label>Loteamento</Label>
-              <Input data-testid="sale-form-property-input" value={form.property_name}
-                onChange={(e) => set("property_name", e.target.value)} placeholder="Ex: Residencial Jardim das Águas" />
+              <Input data-testid="sale-form-property-input" list="loteamentos-list" value={form.property_name}
+                onChange={(e) => set("property_name", e.target.value)} placeholder="Comece a digitar o loteamento..." />
+              <datalist id="loteamentos-list">
+                {(loteamentos || []).map((l) => <option key={l} value={l} />)}
+              </datalist>
             </div>
             <div className="grid sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
@@ -177,12 +180,19 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Corretor</Label>
-              <Input data-testid="sale-form-broker-select" list="brokers-list" value={form.broker_name}
-                onChange={(e) => set("broker_name", e.target.value)} placeholder="Quem fez a venda" />
-              <datalist id="brokers-list">
-                {(brokers || []).map((b) => <option key={b} value={b} />)}
-              </datalist>
+              <Label>Corretor (nome de guerra)</Label>
+              {lockBroker ? (
+                <Input data-testid="sale-form-broker-select" value={form.broker_name} disabled className="opacity-90" />
+              ) : (
+                <>
+                  <Input data-testid="sale-form-broker-select" list="brokers-list" value={form.broker_name}
+                    onChange={(e) => set("broker_name", e.target.value)} placeholder="Digite o nome de guerra do corretor" />
+                  <datalist id="brokers-list">
+                    {(brokers || []).map((b) => <option key={b} value={b} />)}
+                  </datalist>
+                  <p className="text-xs text-muted-foreground">A venda é vinculada automaticamente ao corretor informado.</p>
+                </>
+              )}
             </div>
           </div>
 

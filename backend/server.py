@@ -436,12 +436,72 @@ async def list_sales(month: Optional[int] = None, year: Optional[int] = None,
     return results
 
 
+# ---------------- Loteamentos ----------------
+async def _ensure_loteamento(name: str):
+    name = (name or "").strip()
+    if not name:
+        return
+    if not await db.loteamentos.find_one({"name_lower": name.lower()}):
+        await db.loteamentos.insert_one({
+            "id": f"lot_{uuid.uuid4().hex[:10]}", "name": name,
+            "name_lower": name.lower(), "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+
+async def _loteamento_exists(name: str) -> bool:
+    return bool(await db.loteamentos.find_one({"name_lower": (name or "").strip().lower()}))
+
+
+async def _resolve_corretor_by_name(name: str):
+    nm = (name or "").strip().lower()
+    if not nm:
+        return None
+    corretores = await db.users.find({"role": "corretor"}, {"_id": 0}).to_list(1000)
+    for u in corretores:
+        if (u.get("war_name") or "").strip().lower() == nm or (u.get("name") or "").strip().lower() == nm:
+            return u
+    return None
+
+
+@api_router.get("/loteamentos")
+async def list_loteamentos(user: dict = Depends(get_current_user)):
+    docs = await db.loteamentos.find({}, {"_id": 0}).to_list(3000)
+    docs.sort(key=lambda d: (d.get("name") or "").lower())
+    return docs
+
+
+@api_router.post("/loteamentos")
+async def add_loteamento(request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Informe o nome do loteamento")
+    await _ensure_loteamento(name)
+    return await db.loteamentos.find_one({"name_lower": name.lower()}, {"_id": 0})
+
+
+@api_router.delete("/loteamentos/{lot_id}")
+async def delete_loteamento(lot_id: str, user: dict = Depends(require_master)):
+    await db.loteamentos.delete_one({"id": lot_id})
+    return {"ok": True}
+
+
 @api_router.post("/sales", response_model=Sale)
 async def create_sale(data: SaleCreate, user: dict = Depends(get_current_user)):
     payload = data.model_dump()
     if user.get("role") == "corretor":
+        if not await _loteamento_exists(payload["property_name"]):
+            raise HTTPException(status_code=400, detail="Loteamento não cadastrado. Peça ao gestor para cadastrá-lo.")
         payload["broker_name"] = _display(user)
-    sale = Sale(**payload, user_id=user["user_id"], owner_id=user["user_id"], owner_name=_display(user))
+        owner_id, owner_name = user["user_id"], _display(user)
+    else:
+        await _ensure_loteamento(payload["property_name"])
+        corr = await _resolve_corretor_by_name(payload.get("broker_name"))
+        if corr:
+            owner_id, owner_name = corr["user_id"], _display(corr)
+        else:
+            owner_id, owner_name = user["user_id"], _display(user)
+    sale = Sale(**payload, user_id=user["user_id"], owner_id=owner_id, owner_name=owner_name)
     await db.sales.insert_one(sale.model_dump())
     return sale
 
@@ -452,10 +512,16 @@ async def update_sale(sale_id: str, data: SaleCreate, user: dict = Depends(get_c
     if not existing:
         raise HTTPException(status_code=404, detail="Venda não encontrada")
     payload = data.model_dump()
+    extra = {}
     if user.get("role") == "corretor":
         payload["broker_name"] = existing.get("broker_name") or _display(user)
-    await db.sales.update_one({"id": sale_id}, {"$set": payload})
-    return {**existing, **payload}
+    else:
+        await _ensure_loteamento(payload["property_name"])
+        corr = await _resolve_corretor_by_name(payload.get("broker_name"))
+        if corr:
+            extra = {"owner_id": corr["user_id"], "owner_name": _display(corr)}
+    await db.sales.update_one({"id": sale_id}, {"$set": {**payload, **extra}})
+    return {**existing, **payload, **extra}
 
 
 @api_router.delete("/sales/{sale_id}")
@@ -1099,6 +1165,11 @@ async def _startup():
     if MASTER_EMAILS:
         await db.users.update_many({"email": {"$in": list(MASTER_EMAILS)}},
                                    {"$set": {"role": "master"}})
+    try:
+        for n in await db.sales.distinct("property_name"):
+            await _ensure_loteamento(n)
+    except Exception as e:
+        logger.warning(f"loteamento backfill: {e}")
 
 
 @app.on_event("shutdown")

@@ -72,20 +72,31 @@ export default function Dashboard() {
     queryKey: ["brokers"],
     queryFn: async () => (await api.get("/brokers")).data,
   });
+  const loteamentosQ = useQuery({
+    queryKey: ["loteamentos"],
+    queryFn: async () => (await api.get("/loteamentos")).data,
+  });
+  const corretoresQ = useQuery({
+    queryKey: ["corretores"],
+    queryFn: async () => (await api.get("/corretores")).data,
+  });
 
   const invalidateAll = () => {
-    ["sales", "stats", "ranking", "series"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    ["sales", "stats", "ranking", "series", "loteamentos", "corretores"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   };
+
+  const loteamentos = useMemo(() => (loteamentosQ.data || []).map((l) => l.name), [loteamentosQ.data]);
 
   const brokers = useMemo(() => {
     const set = new Set();
+    (corretoresQ.data || []).forEach((c) => { const n = c.war_name || c.name; if (n) set.add(n); });
     (brokersListQ.data || []).forEach((b) => {
       const n = b.war_name || b.full_name;
       if (n) set.add(n);
     });
     (salesQ.data || []).forEach((s) => s.broker_name && set.add(s.broker_name));
     return Array.from(set);
-  }, [brokersListQ.data, salesQ.data]);
+  }, [corretoresQ.data, brokersListQ.data, salesQ.data]);
 
   const createMut = useMutation({
     mutationFn: (payload) =>
@@ -241,6 +252,7 @@ export default function Dashboard() {
         onSubmit={(payload) => createMut.mutate(payload)}
         initial={editing}
         brokers={brokers}
+        loteamentos={loteamentos}
       />
 
       <InstallmentsDialog

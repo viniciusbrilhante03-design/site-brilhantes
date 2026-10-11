@@ -39,6 +39,8 @@ export default function CorretorDashboard() {
   const salesQ = useQuery({ queryKey: ["sales", params], queryFn: async () => (await api.get("/sales", { params })).data });
   const statsQ = useQuery({ queryKey: ["stats", params], queryFn: async () => (await api.get("/stats", { params })).data });
   const rankingQ = useQuery({ queryKey: ["ranking", params], queryFn: async () => (await api.get("/ranking", { params })).data });
+  const loteamentosQ = useQuery({ queryKey: ["loteamentos"], queryFn: async () => (await api.get("/loteamentos")).data });
+  const loteamentos = useMemo(() => (loteamentosQ.data || []).map((l) => l.name), [loteamentosQ.data]);
 
   const invalidateAll = () => ["sales", "stats", "ranking"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 
@@ -142,7 +144,8 @@ export default function CorretorDashboard() {
       </main>
 
       <SaleFormDialog open={formOpen} onOpenChange={(v) => { setFormOpen(v); if (!v) setEditing(null); }}
-        onSubmit={(p) => createMut.mutate(p)} initial={editing} brokers={[display]} />
+        onSubmit={(p) => createMut.mutate(p)} initial={editing} brokers={[display]}
+        loteamentos={loteamentos} lockBroker lockBrokerName={display} />
       <InstallmentsDialog open={!!instSale} onOpenChange={(v) => { if (!v) setInstSale(null); }} sale={instSale}
         onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })} />
       <AttachmentsDialog open={!!attachSale} onOpenChange={(v) => { if (!v) setAttachSale(null); }} sale={attachSale} />
