@@ -13,6 +13,7 @@ import requests
 import re
 import math
 import io
+import base64
 from calendar import monthrange
 import pandas as pd
 
@@ -557,6 +558,217 @@ async def import_sales(file: UploadFile = File(...), user: dict = Depends(get_cu
         )
     await db.sales.insert_many([s.model_dump() for s in sales])
     return {"imported": len(sales)}
+
+
+# ---------------- Export (Excel / PDF) ----------------
+MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+            "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+
+
+def _fmt_brl(v):
+    s = f"{(v or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return "R$ " + s
+
+
+def _fmt_date(iso):
+    try:
+        y, m, d = iso.split("-")
+        return f"{d}/{m}/{y}"
+    except (ValueError, AttributeError):
+        return iso or ""
+
+
+def _period_label(month, year):
+    if month:
+        return f"{MESES_PT[month - 1]} de {year}"
+    return f"Ano de {year}"
+
+
+def _export_rows(sales):
+    rows = []
+    for s in sales:
+        bc = _broker_comm(s)
+        ac = _agency_comm(s)
+        pend = _pending_amount(s)
+        recv = _received_amount(s)
+        status = "À vista" if not s.get("parcelado") else (
+            "Quitado" if pend <= 0 else "A receber")
+        rows.append({
+            "Data": _fmt_date(s.get("sale_date")),
+            "Loteamento": s.get("property_name", ""),
+            "Quadra": s.get("quadra", ""),
+            "Lote": s.get("lote", ""),
+            "Cliente": s.get("client_name", ""),
+            "Corretor": s.get("broker_name", ""),
+            "Valor da venda": s.get("sale_value", 0) or 0,
+            "Comissão %": s.get("commission_rate", 0) or 0,
+            "Comissão total": s.get("commission_value", 0) or 0,
+            "Comissão corretor": bc,
+            "Comissão imobiliária": ac,
+            "Entrada": s.get("entrada", 0) or 0,
+            "Já recebido": recv,
+            "A receber": pend,
+            "Status": status,
+        })
+    return rows
+
+
+@api_router.get("/export/xlsx")
+async def export_xlsx(month: Optional[int] = None, year: Optional[int] = None,
+                      user: dict = Depends(get_current_user)):
+    sales = await list_sales(month=month, year=year, user=user)
+    rows = _export_rows(sales)
+    df = pd.DataFrame(rows)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Vendas")
+    buf.seek(0)
+    fname = f"vendas-brilhantes-{year}{('-' + str(month).zfill(2)) if month else ''}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@api_router.get("/export/pdf")
+async def export_pdf(month: Optional[int] = None, year: Optional[int] = None,
+                     user: dict = Depends(get_current_user)):
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    sales = await list_sales(month=month, year=year, user=user)
+    rows = _export_rows(sales)
+
+    total_vendido = sum(r["Valor da venda"] for r in rows)
+    total_com = sum(r["Comissão total"] for r in rows)
+    total_corr = sum(r["Comissão corretor"] for r in rows)
+    total_imob = sum(r["Comissão imobiliária"] for r in rows)
+    total_recv = sum(r["Já recebido"] for r in rows)
+    total_pend = sum(r["A receber"] for r in rows)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=12 * mm, rightMargin=12 * mm,
+                            topMargin=12 * mm, bottomMargin=12 * mm)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("t", parent=styles["Title"], textColor=colors.HexColor("#0F382C"), fontSize=18)
+    sub_style = ParagraphStyle("s", parent=styles["Normal"], textColor=colors.HexColor("#6b7280"), fontSize=10)
+    cell = ParagraphStyle("c", parent=styles["Normal"], fontSize=7, leading=9)
+    head = ParagraphStyle("h", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.white)
+
+    elements = [
+        Paragraph("Brilhantes Imóveis — Relatório de Vendas", title_style),
+        Paragraph(f"Período: {_period_label(month, year)} &nbsp;·&nbsp; {len(rows)} venda(s)", sub_style),
+        Spacer(1, 8 * mm),
+    ]
+
+    headers = ["Data", "Loteamento", "Qd/Lt", "Cliente", "Corretor", "Valor",
+               "Com.", "Corretor", "Imob.", "Entrada", "Recebido", "A receber", "Status"]
+    data = [[Paragraph(h, head) for h in headers]]
+    for r in rows:
+        ql = " / ".join([str(r["Quadra"]), str(r["Lote"])]) if (r["Quadra"] or r["Lote"]) else "—"
+        data.append([
+            Paragraph(r["Data"], cell), Paragraph(str(r["Loteamento"]), cell),
+            Paragraph(ql, cell), Paragraph(str(r["Cliente"]) or "—", cell),
+            Paragraph(str(r["Corretor"]), cell), Paragraph(_fmt_brl(r["Valor da venda"]), cell),
+            Paragraph(_fmt_brl(r["Comissão total"]), cell), Paragraph(_fmt_brl(r["Comissão corretor"]), cell),
+            Paragraph(_fmt_brl(r["Comissão imobiliária"]), cell), Paragraph(_fmt_brl(r["Entrada"]), cell),
+            Paragraph(_fmt_brl(r["Já recebido"]), cell), Paragraph(_fmt_brl(r["A receber"]), cell),
+            Paragraph(r["Status"], cell),
+        ])
+    data.append([
+        Paragraph("<b>TOTAIS</b>", cell), "", "", "", "",
+        Paragraph(f"<b>{_fmt_brl(total_vendido)}</b>", cell),
+        Paragraph(f"<b>{_fmt_brl(total_com)}</b>", cell),
+        Paragraph(f"<b>{_fmt_brl(total_corr)}</b>", cell),
+        Paragraph(f"<b>{_fmt_brl(total_imob)}</b>", cell), "",
+        Paragraph(f"<b>{_fmt_brl(total_recv)}</b>", cell),
+        Paragraph(f"<b>{_fmt_brl(total_pend)}</b>", cell), "",
+    ])
+
+    table = Table(data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F382C")),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d1d5db")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f3f6f5")]),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#efe7d4")),
+        ("SPAN", (0, -1), (4, -1)),
+    ]))
+    elements.append(table)
+    doc.build(elements)
+    buf.seek(0)
+    fname = f"relatorio-brilhantes-{year}{('-' + str(month).zfill(2)) if month else ''}.pdf"
+    return Response(
+        content=buf.getvalue(), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# ---------------- Attachments (anexos por venda) ----------------
+class AttachmentMeta(BaseModel):
+    id: str
+    sale_id: str
+    filename: str
+    content_type: str
+    size: int
+    created_at: str
+
+
+@api_router.post("/sales/{sale_id}/attachments", response_model=AttachmentMeta)
+async def upload_attachment(sale_id: str, file: UploadFile = File(...),
+                            user: dict = Depends(get_current_user)):
+    sale = await db.sales.find_one({"id": sale_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Venda não encontrada")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Arquivo muito grande (máx. 10 MB).")
+    att = {
+        "id": f"att_{uuid.uuid4().hex[:12]}",
+        "sale_id": sale_id,
+        "user_id": user["user_id"],
+        "filename": file.filename or "arquivo",
+        "content_type": file.content_type or "application/octet-stream",
+        "size": len(content),
+        "data": base64.b64encode(content).decode("ascii"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.attachments.insert_one(att)
+    return AttachmentMeta(**{k: att[k] for k in ("id", "sale_id", "filename", "content_type", "size", "created_at")})
+
+
+@api_router.get("/sales/{sale_id}/attachments", response_model=List[AttachmentMeta])
+async def list_attachments(sale_id: str, user: dict = Depends(get_current_user)):
+    docs = await db.attachments.find(
+        {"sale_id": sale_id, "user_id": user["user_id"]},
+        {"_id": 0, "data": 0},
+    ).to_list(100)
+    return docs
+
+
+@api_router.get("/attachments/{att_id}/download")
+async def download_attachment(att_id: str, user: dict = Depends(get_current_user)):
+    att = await db.attachments.find_one({"id": att_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not att:
+        raise HTTPException(status_code=404, detail="Anexo não encontrado")
+    content = base64.b64decode(att["data"])
+    return Response(
+        content=content, media_type=att["content_type"],
+        headers={"Content-Disposition": f'attachment; filename="{att["filename"]}"'},
+    )
+
+
+@api_router.delete("/attachments/{att_id}")
+async def delete_attachment(att_id: str, user: dict = Depends(get_current_user)):
+    res = await db.attachments.delete_one({"id": att_id, "user_id": user["user_id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Anexo não encontrado")
+    return {"ok": True}
 
 
 app.include_router(api_router)

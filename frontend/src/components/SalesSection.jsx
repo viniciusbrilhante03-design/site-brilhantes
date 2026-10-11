@@ -10,10 +10,13 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { brl, formatDateBR, splitComm } from "@/lib/format";
-import { Search, Pencil, Trash2, Wallet, Plus, Upload } from "lucide-react";
+import { Search, Pencil, Trash2, Wallet, Plus, Upload, Paperclip, Download, FileSpreadsheet, FileText } from "lucide-react";
 
-export default function SalesSection({ sales, loading, onAdd, onEdit, onDelete, onOpenInstallments, onImport }) {
+export default function SalesSection({ sales, loading, onAdd, onEdit, onDelete, onOpenInstallments, onImport, onExport, onOpenAttachments }) {
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {
@@ -42,6 +45,21 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDelete, 
             <Input data-testid="sales-table-search-input" value={q} onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar loteamento, corretor..." className="pl-9" />
           </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button data-testid="btn-export-menu" variant="outline" className="shrink-0">
+                <Download className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Exportar</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem data-testid="btn-export-xlsx" onClick={() => onExport("xlsx")}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel (.xlsx)
+              </DropdownMenuItem>
+              <DropdownMenuItem data-testid="btn-export-pdf" onClick={() => onExport("pdf")}>
+                <FileText className="h-4 w-4 mr-2" /> PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button data-testid="btn-import-sales" variant="outline" onClick={onImport} className="shrink-0">
             <Upload className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Importar</span>
           </Button>
@@ -110,6 +128,10 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDelete, 
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-1">
+                        <Button data-testid={`btn-attachments-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
+                          title="Anexos" onClick={() => onOpenAttachments(s)}>
+                          <Paperclip className="h-4 w-4" />
+                        </Button>
                         <Button data-testid={`btn-installments-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
                           title="Fluxo a receber" onClick={() => onOpenInstallments(s)}>
                           <Wallet className="h-4 w-4" />

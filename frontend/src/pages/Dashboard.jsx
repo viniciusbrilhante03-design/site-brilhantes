@@ -22,6 +22,7 @@ import SaleFormDialog from "@/components/SaleFormDialog";
 import InstallmentsDialog from "@/components/InstallmentsDialog";
 import ImportDialog from "@/components/ImportDialog";
 import BrokersDialog from "@/components/BrokersDialog";
+import AttachmentsDialog from "@/components/AttachmentsDialog";
 import { Building2, LogOut, Moon, Sun, CalendarDays, Users } from "lucide-react";
 
 const ALL = "all";
@@ -41,6 +42,7 @@ export default function Dashboard() {
   const [instSale, setInstSale] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [brokersOpen, setBrokersOpen] = useState(false);
+  const [attachSale, setAttachSale] = useState(null);
 
   const params = useMemo(() => {
     const p = { year };
@@ -110,6 +112,22 @@ export default function Dashboard() {
     },
     onError: () => toast.error("Erro ao atualizar parcela."),
   });
+
+  const handleExport = async (type) => {
+    try {
+      toast.info("Gerando relatório...");
+      const res = await api.get(`/export/${type}`, { params, responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `relatorio-brilhantes-${year}${month !== ALL ? "-" + String(month).padStart(2, "0") : ""}.${type}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Relatório gerado!");
+    } catch {
+      toast.error("Erro ao gerar o relatório.");
+    }
+  };
 
   const periodLabel = month === ALL ? `Ano ${year}` : `${MESES[month - 1]} de ${year}`;
 
@@ -208,6 +226,8 @@ export default function Dashboard() {
           onDelete={(id) => deleteMut.mutate(id)}
           onOpenInstallments={(s) => setInstSale(s)}
           onImport={() => setImportOpen(true)}
+          onExport={handleExport}
+          onOpenAttachments={(s) => setAttachSale(s)}
         />
       </main>
 
@@ -236,6 +256,12 @@ export default function Dashboard() {
         open={brokersOpen}
         onOpenChange={setBrokersOpen}
         ranking={rankingQ.data}
+      />
+
+      <AttachmentsDialog
+        open={!!attachSale}
+        onOpenChange={(v) => { if (!v) setAttachSale(null); }}
+        sale={attachSale}
       />
     </div>
   );
