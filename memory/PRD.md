@@ -48,6 +48,16 @@ entrou e o que falta entrar. Controle datado.
   comissão do corretor; troféu/medalhas no pódio.
 - Testes: 23/23 backend + fluxos frontend 100%.
 
+### Iteração 3 (2026-10-11)
+- **Bug corrigido:** navegador traduzia o conteúdo (ex.: "GOLDEN VILLE" → "VILA DOURADA").
+  Causa: index.html com `lang="en"`. Corrigido para `lang="pt-BR" translate="no"` +
+  `<meta name="google" content="notranslate">` + `body.notranslate`. Dados salvos verbatim.
+- **Exportar relatório** do período em **Excel (.xlsx)** e **PDF** (/api/export/xlsx, /api/export/pdf)
+  com totais e divisão de comissão.
+- **Anexos por venda** (contratos/comprovantes): upload/listar/baixar/excluir
+  (/api/sales/{id}/attachments, /api/attachments/{id}/download). Base64 em coleção própria, máx. 10 MB.
+- Testes: 30/30 backend; UI smoke test de export e anexos OK.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
