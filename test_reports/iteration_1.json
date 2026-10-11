@@ -1,0 +1,35 @@
+{
+  "summary": "First-run end-to-end testing of Brilhantes Imóveis (sales control for a single gestor). Backend: 15/15 pytest tests passing covering auth (unauthenticated 401, cookie, bearer), sales listing with month/year filters, CRUD, installment baixa toggle (with persisted received_date), stats consistency (ja_entrou + falta_entrar ≈ total_vendido), ranking per broker, and 12-month series. Frontend: injected session cookie flow verified. /dashboard without session correctly redirects to '/' (login). With cookie, dashboard loads 13 seeded 2026 sales, all 5 KPIs render, monthly chart renders, ranking card toggles Por Volume/Por Quantidade, and month filter (Junho) correctly narrows the table to 4 June rows. Full 'Nova venda' flow passes: open dialog, fill fields, toggle parcelado, generate 3 installments, submit → sale appears; open 'Fluxo a receber' → 'Dar baixa' marks installment 1 as received; edit updates property_name; delete removes the sale.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard initial render", "issues": ["Recharts logs a transient 'width(-1) height(-1)' warning on first mount before ResponsiveContainer measures (cosmetic only; chart renders correctly thereafter)."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py list_sales filters in Python after fetching all docs; for scale, push month/year filter into Mongo query using a regex or $expr on sale_date prefix.",
+    "SaleCreate.commission_value is accepted from client but could be re-derived server-side from sale_value*commission_rate to prevent client/server drift; currently commissao is trusted as sent.",
+    "update_sale builds 'updated' as merge but response model is Sale; it echoes the merged doc rather than re-fetching—fine but inconsistent with PATCH which re-fetches.",
+    "No validation that sum(installments.value) + entrada == sale_value; silent inconsistency possible.",
+    "Backend trusts client-sent installments on create/update without verifying unique 'number' values.",
+    "Dashboard uses react-query but no error boundaries/toasts on query failures (only mutations have toasts)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new)",
+    "/app/test_reports/iteration_1.json (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "Bearer / cookie session_token=qa_session_vinicius_001 for user_owner_vinicius (viniciusbrilhante03@gmail.com) in test_database. No Google login used.",
+  "seed_data_creation": "Tests create and clean up TEST_-prefixed sales. Playwright flow created and deleted a QA_Playwright_Apt sale, net-neutral. 13 seeded 2026 demo sales remain intact.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py at /app/backend/tests covers all documented endpoints (15 tests). Rerun with: pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml. For frontend, inject cookie {name:session_token, value:qa_session_vinicius_001, domain:controle-imoveis-1.preview.emergentagent.com, path:/, secure:true, sameSite:None, httpOnly:true} before navigating to /dashboard. All data-testids from the request are present and working.",
+  "rca of the issue": "N/A — no failing cases observed."
+}
