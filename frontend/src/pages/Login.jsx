@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Building2, TrendingUp, Trophy, Wallet } from "lucide-react";
+import { TrendingUp, Trophy, Wallet } from "lucide-react";
 
 export default function Login() {
   const { user, loading } = useAuth();
@@ -39,14 +39,8 @@ export default function Login() {
           }}
         />
         <div className="absolute inset-0" style={{ background: "linear-gradient(160deg, hsl(158 42% 14% / 0.85), hsl(158 42% 10% / 0.95))" }} />
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="h-11 w-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: "hsl(40 52% 56%)" }}>
-            <Building2 className="h-6 w-6 text-[hsl(158,42%,14%)]" />
-          </div>
-          <div>
-            <div className="text-white font-heading font-extrabold text-lg leading-tight">Brilhantes Imóveis</div>
-            <div className="text-white/60 text-xs tracking-widest uppercase">Gestão de Vendas</div>
-          </div>
+        <div className="relative z-10">
+          <img src="/logo-dark.jpg" alt="Brilhante's Imóveis" className="h-28 w-auto rounded-2xl shadow-2xl ring-1 ring-white/10" />
         </div>
         <div className="relative z-10 space-y-6">
           <h1 className="text-white font-heading font-extrabold text-4xl xl:text-5xl leading-[1.1]">
@@ -75,11 +69,8 @@ export default function Login() {
       {/* Right login */}
       <div className="flex items-center justify-center p-8">
         <div className="w-full max-w-sm fade-up">
-          <div className="lg:hidden flex items-center gap-3 mb-10">
-            <div className="h-11 w-11 rounded-xl flex items-center justify-center bg-primary">
-              <Building2 className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <div className="font-heading font-extrabold text-lg">Brilhantes Imóveis</div>
+          <div className="lg:hidden flex justify-center mb-8">
+            <img src="/logo-light.jpg" alt="Brilhante's Imóveis" className="h-24 w-auto" />
           </div>
           <h2 className="font-heading text-3xl font-extrabold tracking-tight">Bem-vindo de volta</h2>
           <p className="text-muted-foreground mt-2 text-sm">

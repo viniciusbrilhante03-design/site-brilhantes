@@ -23,7 +23,7 @@ import InstallmentsDialog from "@/components/InstallmentsDialog";
 import ImportDialog from "@/components/ImportDialog";
 import BrokersDialog from "@/components/BrokersDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
-import { Building2, LogOut, Moon, Sun, CalendarDays, Users } from "lucide-react";
+import { LogOut, Moon, Sun, CalendarDays, Users } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -136,12 +136,10 @@ export default function Dashboard() {
       {/* Header */}
       <header className="sticky top-0 z-40 glass border-b border-border/60">
         <div className="flex items-center gap-3 px-4 md:px-6 h-16">
-          <div className="h-9 w-9 rounded-xl flex items-center justify-center bg-primary shrink-0">
-            <Building2 className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div className="hidden sm:block">
-            <div className="font-heading font-extrabold leading-tight">Brilhantes Imóveis</div>
-            <div className="text-[11px] text-muted-foreground tracking-wide uppercase">Gestão de Vendas</div>
+          <img src={theme.dark ? "/logo-dark.jpg" : "/logo-light.jpg"} alt="Brilhante's Imóveis"
+            className="h-11 w-auto rounded-lg shrink-0" data-testid="app-logo" />
+          <div className="hidden md:block">
+            <div className="text-[11px] text-muted-foreground tracking-[0.2em] uppercase">Gestão de Vendas</div>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
