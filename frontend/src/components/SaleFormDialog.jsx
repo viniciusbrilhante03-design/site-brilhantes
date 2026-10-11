@@ -182,7 +182,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
             <div className="space-y-1.5">
               <Label>Corretor (nome de guerra)</Label>
               {lockBroker ? (
-                <Input data-testid="sale-form-broker-select" value={form.broker_name} disabled className="opacity-90" />
+                <Input data-testid="sale-form-broker-locked" value={form.broker_name} disabled className="opacity-90" />
               ) : (
                 <>
                   <Input data-testid="sale-form-broker-select" list="brokers-list" value={form.broker_name}

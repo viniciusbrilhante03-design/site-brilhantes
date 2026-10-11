@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 3 — AUTH + RBAC + ownership + loteamentos end-to-end. Backend: 52/52 pytest passing (added TestLoteamentosAndOwnership block with 5 new tests + fixed 3 pre-existing auth-multi tests that assumed free-form property_name / cross-worker state). All critical flows verified: corretor register/login (CPF password), duplicate email 400, wrong password 401, lockout 429 after 5 fails, change-password invalidates old JWT, forgot-password returns identical generic response for registered/unregistered emails, reset-password with bad token 400, Google-session master me, carlos.teste JWT me, owner_id isolation (corretor /sales shows only his, /stats returns vgv_geral company-wide, /ranking is company-wide, cannot PUT/DELETE other's sale → 404), delete creates /history entry with deleted_by_name, /corretores master-only (corretor 403), toggle-active blocks login (403), loteamentos ACL (corretor POST 403, master POST 200), corretor sale with unregistered loteamento → 400, master sale auto-registers new loteamento, master create sale with broker_name=war_name binds owner_id to corretor (Carlos sees it in his /sales). Frontend (Playwright): login page shows email/password/submit + Google button + Cadastre-se + forgot-link; real login as carlos.teste redirects to /dashboard → CorretorDashboard shows 6 KPIs ['VGV Geral (imobiliária)','Minhas Vendas','Meu Volume','Minha Comissão','Já Recebi','A Receber'] with correct Brazilian number formatting; Nova venda opens SaleFormDialog with broker field disabled and value='Carlão' and loteamentos-list datalist present; user menu exposes 'Trocar senha' + 'Sair'. Master flow via injected session_token cookie: /dashboard loads; btn-open-team opens team-dialog with reg-link + copy-reg-link + tabs Corretores/Loteamentos/Historico (all testids verified); Loteamentos tab has lot-input + lot-add; Historico tab lists deleted sales with deleted_by_name.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Master Dashboard", "issues": ["Recharts logs repeated 'width(-1) and height(-1) ... please check the style of container' console warnings on initial mount — cosmetic, chart renders correctly after reflow. Consider setting a minWidth/minHeight on ResponsiveContainer parent to silence."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_multiuser.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 1177 lines — split into routers (auth, sales, loteamentos, corretores, history, stats) for maintainability.",
+    "Historical sales_history collection still shows 'TEST_Broker' leftovers from earlier iterations — add an admin cleanup endpoint or seed script that purges TEST_/QA_ prefixes on startup so history view stays clean for the master.",
+    "Corretor dashboard's /sales query returns full owner_id in every row; ensure that field is not needed on the UI, and consider stripping it from the corretor-scoped response for defense-in-depth.",
+    "Login response does not expose user_id/role to the client at response-body level in some branches — AuthContext relies on a follow-up /auth/me call, which is fine but adds a round-trip; include the user object in the login response payload to shave latency on first paint.",
+    "SaleFormDialog has two inputs with the same data-testid='sale-form-broker-select' (locked variant for corretor + datalist variant for master). While only one renders at a time, Playwright strict mode selectors can fail — give them distinct testids (e.g., sale-form-broker-locked / sale-form-broker-search).",
+    "Forgot-password + reset-password token stored as sha256 is correct, but the preview env likely cannot send real email (EMERGENT_EMAIL_KEY); endpoint correctly returns generic 200 — good. Document in README that in preview the token must be read from logs for manual QA.",
+    "Add server-side rate limit (not just 5-fail lockout) on /auth/register to prevent abuse of the public /cadastro link."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py (new — loads REACT_APP_BACKEND_URL from frontend/.env)",
+    "/app/backend/tests/test_auth_multiuser.py (fixed: uses existing loteamento for corretor sale, self-contained delete-history test, dynamic owner_id lookup instead of cross-class state; added TestLoteamentosAndOwnership class with 5 tests; cleanup extended to QA_ prefix on sales/sales_history/loteamentos)"
+  ],
+  "success_rate": { "backend": "100% (52/52)", "frontend": "100% of flows under test" },
+  "test_credentials": "Master Bearer/cookie session_token=qa_session_vinicius_001 (viniciusbrilhante03@gmail.com); Corretor carlos.teste@brilhantes.com / 12345678900 (CPF).",
+  "seed_data_creation": "Transient QA_* and teste+*@qa.brilhantes.com users/sales/loteamentos — all removed by autouse module-scope cleanup fixture. 13 demo sales + Aninha/Carlão/base loteamentos preserved.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Full suite: `pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml` (52 tests, 2 xdist workers, loadscope). Backend conftest now auto-loads REACT_APP_BACKEND_URL — no env export needed. For Playwright master flow, inject session_token cookie (secure, sameSite=None, httpOnly) and navigate to /dashboard; for corretor flow do a real POST login via UI form (login-email/login-password/login-submit). Note duplicate data-testid='sale-form-broker-select' on two mutually-exclusive inputs — use .first() if strict mode trips.",
+  "rca of the issue": "Pre-existing test failures were test-side only: (1) corretor-sale test used a non-existent property_name while backend correctly enforces the new 400-when-loteamento-not-registered rule; (2) dependent tests across TestIsolation/TestHistoryAndMaster relied on module-level `state` dict but pytest-xdist loadscope schedules each class on a different worker, so cross-class state is empty. Mitigation: tests now (a) read an existing loteamento from GET /api/loteamentos before posting, (b) resolve owner_id via /auth/me instead of shared state, and (c) the delete-history test creates its own sale."
+}

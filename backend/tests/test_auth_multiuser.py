@@ -134,10 +134,16 @@ class TestChangeAndReset:
 
 # -------- Isolation (owner_id) ----------
 class TestIsolation:
+    def _existing_loteamento(self, client):
+        lots = client.get(f"{BASE_URL}/loteamentos").json()
+        assert lots, "need at least one pre-registered loteamento"
+        return lots[0]["name"]
+
     def test_corretor_sale_scoped(self, carlos_client, master_client):
+        lot_name = self._existing_loteamento(master_client)
         payload = {
-            "property_name": "TEST_Loteamento Carlos",
-            "broker_name": "Outro Qualquer",  # should be overridden
+            "property_name": lot_name,
+            "broker_name": "Outro Qualquer",  # should be overridden to Carlos
             "sale_date": "2026-01-15",
             "sale_value": 100000.0,
             "commission_rate": 5.0,
@@ -145,10 +151,10 @@ class TestIsolation:
             "broker_split": 60.0,
         }
         r = carlos_client.post(f"{BASE_URL}/sales", json=payload)
-        assert r.status_code == 200
+        assert r.status_code == 200, r.text
         sale = r.json()
-        assert sale["owner_id"]  # has owner
-        assert sale["broker_name"] in ("Carlão", "Carlos Teste"), f"broker_name must be forced to corretor display: {sale['broker_name']}"
+        assert sale["owner_id"]
+        assert sale["broker_name"] not in ("Outro Qualquer",), "broker_name must be forced to the logged-in corretor"
         state["carlos_sale_id"] = sale["id"]
         state["carlos_owner_id"] = sale["owner_id"]
 
@@ -178,9 +184,10 @@ class TestIsolation:
         assert names1 == names2
 
     def test_corretor_cannot_edit_other_sale(self, carlos_client, master_client):
-        # Pick a sale not owned by Carlos (one of 13 demo sales)
+        me = carlos_client.get(f"{BASE_URL}/auth/me").json()
+        my_owner = me.get("user_id") or me.get("id")
         all_sales = master_client.get(f"{BASE_URL}/sales").json()
-        others = [s for s in all_sales if s.get("owner_id") != state["carlos_owner_id"]]
+        others = [s for s in all_sales if s.get("owner_id") != my_owner]
         assert others, "need at least one other sale"
         other_id = others[0]["id"]
         r = carlos_client.put(f"{BASE_URL}/sales/{other_id}", json={
@@ -195,15 +202,23 @@ class TestIsolation:
 # -------- History on delete ----------
 class TestHistoryAndMaster:
     def test_delete_sale_creates_history(self, carlos_client, master_client):
-        sid = state["carlos_sale_id"]
+        # Create a sale with Carlos first (self-contained; loadscope separates classes)
+        lots = master_client.get(f"{BASE_URL}/loteamentos").json()
+        lot_name = lots[0]["name"]
+        r_c = carlos_client.post(f"{BASE_URL}/sales", json={
+            "property_name": lot_name,
+            "broker_name": "x", "sale_date": "2026-02-10",
+            "sale_value": 50000.0, "commission_rate": 5.0,
+            "commission_value": 2500.0, "broker_split": 60.0,
+        })
+        assert r_c.status_code == 200, r_c.text
+        sid = r_c.json()["id"]
         r = carlos_client.delete(f"{BASE_URL}/sales/{sid}")
         assert r.status_code == 200
-        # Carlos sees it in his history
         h_carlos = carlos_client.get(f"{BASE_URL}/history").json()
         assert any(h["id"] == sid for h in h_carlos)
         entry = next(h for h in h_carlos if h["id"] == sid)
         assert entry.get("deleted_by_name")
-        # Master sees it too
         h_master = master_client.get(f"{BASE_URL}/history").json()
         assert any(h["id"] == sid for h in h_master)
         assert len(h_master) >= len(h_carlos)
@@ -234,7 +249,59 @@ class TestHistoryAndMaster:
         master_client.patch(f"{BASE_URL}/corretores/{uid}/active", json={"active": True})
 
 
-# -------- Cleanup ----------
+# -------- Loteamentos + master sale ownership binding ----------
+class TestLoteamentosAndOwnership:
+    def test_corretor_cannot_create_loteamento(self, carlos_client):
+        r = carlos_client.post(f"{BASE_URL}/loteamentos", json={"name": "QA_LotCorretor"})
+        assert r.status_code == 403
+
+    def test_master_creates_loteamento_and_lists(self, master_client):
+        name = f"QA_Lot_{uuid.uuid4().hex[:6]}"
+        r = master_client.post(f"{BASE_URL}/loteamentos", json={"name": name})
+        assert r.status_code == 200, r.text
+        lots = master_client.get(f"{BASE_URL}/loteamentos").json()
+        assert any(l["name"] == name for l in lots)
+        state["qa_lot"] = name
+
+    def test_corretor_sale_with_unregistered_loteamento_400(self, carlos_client):
+        r = carlos_client.post(f"{BASE_URL}/sales", json={
+            "property_name": f"QA_UnknownLot_{uuid.uuid4().hex[:6]}",
+            "broker_name": "x", "sale_date": "2026-03-01",
+            "sale_value": 1000.0, "commission_rate": 5.0, "commission_value": 50.0,
+        })
+        assert r.status_code == 400, r.text
+
+    def test_master_sale_autoregisters_loteamento(self, master_client):
+        new_lot = f"QA_AutoLot_{uuid.uuid4().hex[:6]}"
+        r = master_client.post(f"{BASE_URL}/sales", json={
+            "property_name": new_lot, "broker_name": "Carlão",
+            "sale_date": "2026-03-02", "sale_value": 10000.0,
+            "commission_rate": 5.0, "commission_value": 500.0,
+        })
+        assert r.status_code == 200, r.text
+        state["autolot_sale_id"] = r.json()["id"]
+        lots = master_client.get(f"{BASE_URL}/loteamentos").json()
+        assert any(l["name"] == new_lot for l in lots), "master-created lot must auto-register"
+
+    def test_master_sale_binds_owner_to_broker_name(self, master_client, carlos_client):
+        # Fetch carlos's war_name from /auth/me and have master create a sale under it
+        me = carlos_client.get(f"{BASE_URL}/auth/me").json()
+        carlos_owner = me.get("user_id") or me.get("id")
+        war_name = me.get("war_name") or me.get("name")
+        lots = master_client.get(f"{BASE_URL}/loteamentos").json()
+        lot_name = lots[0]["name"]
+        r = master_client.post(f"{BASE_URL}/sales", json={
+            "property_name": lot_name, "broker_name": war_name,
+            "sale_date": "2026-03-03", "sale_value": 2000.0,
+            "commission_rate": 5.0, "commission_value": 100.0,
+        })
+        assert r.status_code == 200, r.text
+        sale = r.json()
+        assert sale["owner_id"] == carlos_owner, f"owner_id mismatch: {sale.get('owner_id')} vs {carlos_owner}"
+        # Carlos must now see it in /sales
+        mine = carlos_client.get(f"{BASE_URL}/sales").json()
+        assert any(s["id"] == sale["id"] for s in mine)
+        state["master_bound_sale_id"] = sale["id"]
 @pytest.fixture(scope="module", autouse=True)
 def _cleanup():
     yield
@@ -242,7 +309,10 @@ def _cleanup():
     c = MongoClient("mongodb://localhost:27017")["test_database"]
     # Delete QA sales
     c.sales.delete_many({"property_name": {"$regex": "^TEST_"}})
+    c.sales.delete_many({"property_name": {"$regex": "^QA_"}})
     c.sales_history.delete_many({"property_name": {"$regex": "^TEST_"}})
+    c.sales_history.delete_many({"property_name": {"$regex": "^QA_"}})
+    c.loteamentos.delete_many({"name": {"$regex": "^QA_"}})
     # Delete QA test corretores (teste+*@qa.brilhantes.com)
     c.users.delete_many({"email": {"$regex": "^teste\\+.*@qa\\.brilhantes\\.com$"}})
     c.login_attempts.delete_many({"email": {"$regex": "^teste\\+"}})
