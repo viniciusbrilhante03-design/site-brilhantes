@@ -35,14 +35,26 @@ entrou e o que falta entrar. Controle datado.
   tabela de vendas com busca/edição/exclusão, diálogo de cadastro com geração de
   parcelas, diálogo de fluxo a receber com baixa. Tema claro/escuro.
 - Seed de 13 vendas demo de 2026 para o gestor.
-- Testes: 15/15 backend + fluxos frontend 100%.
+
+### Iteração 2 (2026-10-11)
+- Troca "Imóvel" → **Loteamento**; campos **Quadra** e **Lote** (opcionais).
+- Cliente: nome, número e e-mail (opcionais).
+- **Divisão de comissão** configurável (ex.: 60% corretor / 40% imobiliária) com cálculo
+  automático; KPIs Comissão Total / Corretor / Imobiliária (8 cards).
+- **Importação** de planilha Excel/CSV/PDF (/api/sales/import) com reconhecimento de
+  colunas em pt-BR, formatos R$ e datas DD/MM/AAAA, e modelo CSV para download.
+- **Cadastro de Corretores** (/api/brokers CRUD): nome de guerra/completo, número, CRECI,
+  e-mail e **foto** (opcionais); foto aparece no ranking; ranking enriquecido com
+  comissão do corretor; troféu/medalhas no pódio.
+- Testes: 23/23 backend + fluxos frontend 100%.
 
 ## Backlog (P1/P2)
+- P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
-- P1: Validação servidor da soma parcelas+entrada = valor da venda; recalcular comissão no servidor.
+- P1: Split de comissão por venda na importação (hoje fixo 60/40) + erros por linha no import.
 - P2: Filtro de período personalizado (intervalo de datas).
-- P2: Push de filtro month/year direto na query Mongo (escala).
-- P2: Avatares/cadastro de corretores; metas mensais por corretor.
+- P2: Metas mensais por corretor; alerta de parcelas vencendo.
+- P2: Foto de corretor via object storage (hoje base64 no documento).
 
 ## Próximas tarefas sugeridas
 - Exportar relatório do período em PDF/CSV.

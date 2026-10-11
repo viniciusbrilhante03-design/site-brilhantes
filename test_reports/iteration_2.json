@@ -1,0 +1,36 @@
+{
+  "summary": "End-to-end validation of the NEW features: Brokers CRUD, ranking enrichment (photo + comissao_corretor), commission split on sales (broker_split 60/40), Import CSV with Brazilian formats (R$ and DD/MM/YYYY), and the Loteamento rename on both backend and frontend. Backend: 23/23 pytest tests pass (15 regression from iteration_1 + 8 new in test_new_features.py). Frontend (injected session cookie): header 'Corretores' button opens brokers dialog; 'Novo corretor' form saves with war_name/full_name/phone/CRECI/email → card appears with stats; delete removes it. Nova venda shows 'Loteamento' label (no 'Imóvel'), Quadra/Lote, Cliente nome/número/e-mail; typing valor+% auto-fills comissão total; broker_split=60 → Corretor R$ 3.000 / Imob R$ 2.000; switching to 70 → R$ 3.500 / R$ 1.500 live; submitting creates the sale and the list shows the Loteamento column. Import dialog opens with recognized columns and 'Baixar modelo CSV' link. Ranking renders trophy for #1 (AN avatar) and medals for #2/#3; broker photos set via /api/brokers propagate into /api/ranking responses.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/pytest_new_features.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py build_sale_from_row hard-codes 60/40 split on import; expose it as query/header parameter for flexibility (or persist a per-user default on the users doc).",
+    "GET /api/brokers returns a plain list; consider wrapping in {items:[...]} for pagination later. Also sorts in Python after fetch — fine at <500 docs, add index on user_id for scale.",
+    "_broker_comm falls back to 60% when both broker_commission and agency_commission are 0, but if a legitimate sale genuinely has zero commission it will still compute 0 — ok, just note the branch condition `(bc or ac)` means 'at least one is non-zero'; may be clearer as explicit `if bc is not None and ac is not None`.",
+    "parse_brl / parse_date return 0.0 / today on failure silently; import endpoint should collect per-row errors and surface them (e.g., {imported:N, errors:[{row,msg}]}) so users can fix invalid rows.",
+    "Base64 photo stored directly in the broker document can bloat the ranking response (photos replayed per request). Consider a dedicated GET /api/brokers/{id}/photo endpoint, or a thumbnail field + 304-cached photo endpoint, if users upload many brokers.",
+    "BrokersDialog file size is manageable but inline BrokerForm + list could be split into two files for readability.",
+    "SaleFormDialog mixes derived commission_value into form state via side-effect useEffect; this is fine but makes the field editable AND auto-overwritten on each keystroke of rate/value — users editing comissão total get overwritten unexpectedly. Consider marking the input readOnly, or only auto-fill when the field is empty."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py (new)",
+    "/app/test_reports/iteration_2.json (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "Bearer / cookie session_token=qa_session_vinicius_001 for user_owner_vinicius (viniciusbrilhante03@gmail.com) in test_database.",
+  "seed_data_creation": "All test data was TEST_/QA_-prefixed and cleaned up (sales + brokers). 13 seeded 2026 demo sales + Aninha/Ana Paula Souza broker remain intact.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run full suite with: pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml (23 tests). For Playwright, inject cookie {name:session_token,value:qa_session_vinicius_001,domain:controle-imoveis-1.preview.emergentagent.com,path:/,secure:true,sameSite:None,httpOnly:true}. Key data-testids verified live: btn-open-brokers, brokers-dialog, btn-add-broker, broker-form, broker-war-name/full-name/phone/creci/email/save-btn, broker-card-{id}, btn-edit/delete-broker-{id}, btn-import-sales, import-dialog, import-download-template, sale-form-property-input, sale-form-quadra/lote-input, sale-form-client/phone/email-input, sale-form-broker-split, sale-form-broker-commission, sale-form-agency-commission, sale-form-submit-button.",
+  "rca of the issue": "N/A — all new features working as specified."
+}
