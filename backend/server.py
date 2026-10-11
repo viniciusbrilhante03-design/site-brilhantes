@@ -637,7 +637,7 @@ async def export_pdf(month: Optional[int] = None, year: Optional[int] = None,
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
     sales = await list_sales(month=month, year=year, user=user)
@@ -660,8 +660,13 @@ async def export_pdf(month: Optional[int] = None, year: Optional[int] = None,
     cell = ParagraphStyle("c", parent=styles["Normal"], fontSize=7, leading=9)
     head = ParagraphStyle("h", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.white)
 
-    elements = [
-        Paragraph("Brilhantes Imóveis — Relatório de Vendas", title_style),
+    logo_path = ROOT_DIR.parent / "frontend" / "public" / "logo-light.jpg"
+    elements = []
+    if logo_path.exists():
+        elements.append(Image(str(logo_path), width=24 * mm, height=24 * mm))
+        elements.append(Spacer(1, 3 * mm))
+    elements += [
+        Paragraph("Brilhante's Imóveis — Relatório de Vendas", title_style),
         Paragraph(f"Período: {_period_label(month, year)} &nbsp;·&nbsp; {len(rows)} venda(s)", sub_style),
         Spacer(1, 8 * mm),
     ]
