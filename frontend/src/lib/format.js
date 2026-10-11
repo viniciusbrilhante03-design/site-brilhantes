@@ -32,3 +32,12 @@ export const splitComm = (s) => {
   broker = broker || 0;
   return { broker, agency: total - broker };
 };
+
+export const apiErr = (detail, fallback = "Algo deu errado. Tente novamente.") => {
+  if (detail == null) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail))
+    return detail.map((e) => (e && typeof e.msg === "string" ? e.msg : JSON.stringify(e))).join(" ");
+  if (detail && typeof detail.msg === "string") return detail.msg;
+  return String(detail);
+};

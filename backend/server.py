@@ -16,6 +16,11 @@ import io
 import base64
 from calendar import monthrange
 import pandas as pd
+import bcrypt
+import jwt
+import httpx
+import secrets
+import hashlib
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -31,6 +36,79 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+
+# ---------------- Auth config & helpers ----------------
+JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change")
+JWT_ALG = "HS256"
+MASTER_EMAILS = set(e.strip().lower() for e in os.environ.get("MASTER_EMAILS", "").split(",") if e.strip())
+EMAIL_BASE_URL = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip().rstrip("/") or "https://integrations.emergentagent.com"
+EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME") or "Brilhante's Imóveis"
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "").rstrip("/")
+
+
+def hash_password(p: str) -> str:
+    return bcrypt.hashpw(p.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(p: str, h: str) -> bool:
+    try:
+        return bcrypt.checkpw(p.encode("utf-8"), h.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
+
+
+def create_access_token(user_id: str, ver: int = 0) -> str:
+    payload = {"sub": user_id, "ver": ver, "type": "access",
+               "exp": datetime.now(timezone.utc) + timedelta(days=7)}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+def _only_digits(s: str) -> str:
+    return re.sub(r"\D", "", s or "")
+
+
+def _display(user: dict) -> str:
+    return user.get("war_name") or user.get("name") or user.get("email") or "—"
+
+
+def _scope_query(user: dict) -> dict:
+    if user.get("role") == "master":
+        return {}
+    return {"owner_id": user["user_id"]}
+
+
+def _set_jwt_cookie(response: Response, token: str):
+    response.set_cookie(key="access_token", value=token, httponly=True,
+                        secure=True, samesite="none", path="/", max_age=7 * 24 * 60 * 60)
+
+
+async def send_password_reset_email(to_email: str, token: str) -> bool:
+    base = FRONTEND_URL
+    link = f"{base}/reset-password?token={token}"
+    if not EMAIL_KEY or EMAIL_KEY.startswith("{") or not base.startswith("https://"):
+        logger.warning("Email não configurado; link de redefinição: %s", link)
+        return False
+    from html import escape
+    brand = escape(EMAIL_FROM_NAME)
+    html = (
+        f'<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif">'
+        f'<p>Recebemos um pedido para redefinir sua senha na {brand}.</p>'
+        f'<p><a href="{escape(link)}">Redefinir minha senha</a></p>'
+        f'<p>Este link expira em 1 hora e pode ser usado uma vez. Se você não solicitou, ignore este e-mail.</p>'
+        f'<p style="font-size:12px;color:#888">Enviado por {brand}.</p></td></tr></table>'
+    )
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            resp = await c.post(f"{EMAIL_BASE_URL}/api/v1/email/send",
+                                headers={"X-Email-Key": EMAIL_KEY},
+                                json={"to": [to_email], "subject": f"Redefinir senha — {EMAIL_FROM_NAME}",
+                                      "html": html, "from_name": EMAIL_FROM_NAME})
+        resp.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error(f"Falha ao enviar e-mail de redefinição: {e}")
+        return False
 
 
 # ---------------- Models ----------------
@@ -66,6 +144,8 @@ class SaleCreate(BaseModel):
 class Sale(SaleCreate):
     id: str = Field(default_factory=lambda: f"sale_{uuid.uuid4().hex[:12]}")
     user_id: str
+    owner_id: Optional[str] = None
+    owner_name: Optional[str] = ""
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -86,30 +166,49 @@ class Broker(BrokerBase):
 
 
 # ---------------- Auth ----------------
-async def get_current_user(request: Request):
-    token = request.cookies.get("session_token")
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
-    if not token:
-        raise HTTPException(status_code=401, detail="Não autenticado")
-
+async def _resolve_token(token: str):
     session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-    if not session:
-        raise HTTPException(status_code=401, detail="Sessão inválida")
+    if session:
+        expires_at = session["expires_at"]
+        if isinstance(expires_at, str):
+            expires_at = datetime.fromisoformat(expires_at)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at >= datetime.now(timezone.utc):
+            u = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+            if u:
+                return u
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        if payload.get("type") == "access":
+            u = await db.users.find_one({"user_id": payload["sub"]}, {"_id": 0})
+            if u and payload.get("ver", 0) == u.get("token_version", 0):
+                return u
+    except jwt.PyJWTError:
+        pass
+    return None
 
-    expires_at = session["expires_at"]
-    if isinstance(expires_at, str):
-        expires_at = datetime.fromisoformat(expires_at)
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=401, detail="Sessão expirada")
 
-    user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=401, detail="Usuário não encontrado")
+async def get_current_user(request: Request):
+    tokens = []
+    if request.cookies.get("session_token"):
+        tokens.append(request.cookies["session_token"])
+    if request.cookies.get("access_token"):
+        tokens.append(request.cookies["access_token"])
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        tokens.append(auth[7:])
+    for t in tokens:
+        u = await _resolve_token(t)
+        if u:
+            u.pop("password_hash", None)
+            return u
+    raise HTTPException(status_code=401, detail="Não autenticado")
+
+
+async def require_master(user: dict = Depends(get_current_user)):
+    if user.get("role") != "master":
+        raise HTTPException(status_code=403, detail="Acesso restrito ao gestor")
     return user
 
 
@@ -125,13 +224,13 @@ async def process_session(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Falha na autenticação Google")
     data = resp.json()
 
-    email = data["email"]
+    email = (data["email"] or "").lower()
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing:
         user_id = existing["user_id"]
         await db.users.update_one(
             {"user_id": user_id},
-            {"$set": {"name": data.get("name"), "picture": data.get("picture")}},
+            {"$set": {"name": data.get("name"), "picture": data.get("picture"), "role": "master"}},
         )
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
@@ -140,6 +239,7 @@ async def process_session(request: Request, response: Response):
             "email": email,
             "name": data.get("name"),
             "picture": data.get("picture"),
+            "role": "master",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -175,59 +275,205 @@ async def logout(request: Request, response: Response):
     if token:
         await db.user_sessions.delete_one({"session_token": token})
     response.delete_cookie("session_token", path="/")
+    response.delete_cookie("access_token", path="/")
+    return {"ok": True}
+
+
+class CorretorRegister(BaseModel):
+    name: str
+    war_name: Optional[str] = ""
+    email: str
+    cpf: str
+    creci: Optional[str] = ""
+    phone: Optional[str] = ""
+
+
+@api_router.post("/auth/register")
+async def register(data: CorretorRegister, response: Response):
+    email = (data.email or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=422, detail="E-mail inválido")
+    cpf = _only_digits(data.cpf)
+    if len(cpf) < 6:
+        raise HTTPException(status_code=400, detail="CPF inválido")
+    if not (data.name or data.war_name):
+        raise HTTPException(status_code=400, detail="Informe o nome")
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="E-mail já cadastrado")
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "user_id": user_id, "email": email, "name": data.name,
+        "war_name": data.war_name or "", "cpf": cpf, "creci": data.creci or "",
+        "phone": data.phone or "", "role": "corretor", "active": True,
+        "password_hash": hash_password(cpf), "token_version": 0,
+        "picture": "", "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.insert_one(doc)
+    _set_jwt_cookie(response, create_access_token(user_id, 0))
+    doc.pop("password_hash", None)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.post("/auth/login")
+async def login(request: Request, response: Response):
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password") or ""
+    ip = request.client.host if request.client else "?"
+    identifier = f"{ip}:{email}"
+    rec = await db.login_attempts.find_one({"identifier": identifier})
+    if rec and rec.get("locked_until"):
+        if datetime.fromisoformat(rec["locked_until"]) > datetime.now(timezone.utc):
+            raise HTTPException(status_code=429, detail="Muitas tentativas. Tente novamente em alguns minutos.")
+    user = await db.users.find_one({"email": email})
+    if not user or not user.get("password_hash") or not verify_password(password, user["password_hash"]):
+        count = (rec.get("count", 0) if rec else 0) + 1
+        upd = {"identifier": identifier, "email": email, "count": count,
+               "updated_at": datetime.now(timezone.utc).isoformat()}
+        if count >= 5:
+            upd["locked_until"] = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
+            upd["count"] = 0
+        await db.login_attempts.update_one({"identifier": identifier}, {"$set": upd}, upsert=True)
+        raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
+    if not user.get("active", True):
+        raise HTTPException(status_code=403, detail="Conta inativa. Fale com o gestor.")
+    await db.login_attempts.delete_many({"email": email})
+    _set_jwt_cookie(response, create_access_token(user["user_id"], user.get("token_version", 0)))
+    user.pop("password_hash", None)
+    user.pop("_id", None)
+    return user
+
+
+@api_router.post("/auth/change-password")
+async def change_password(request: Request, user: dict = Depends(get_current_user)):
+    if user.get("role") != "corretor":
+        raise HTTPException(status_code=400, detail="O gestor acessa via Google.")
+    body = await request.json()
+    full = await db.users.find_one({"user_id": user["user_id"]})
+    if not verify_password(body.get("current_password") or "", full.get("password_hash", "")):
+        raise HTTPException(status_code=400, detail="Senha atual incorreta")
+    new = body.get("new_password") or ""
+    if len(new) < 4:
+        raise HTTPException(status_code=400, detail="A nova senha deve ter ao menos 4 caracteres")
+    await db.users.update_one({"user_id": user["user_id"]},
+                              {"$set": {"password_hash": hash_password(new)},
+                               "$inc": {"token_version": 1}})
+    return {"ok": True}
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(request: Request):
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    generic = {"message": "Se este e-mail estiver cadastrado, enviaremos um link de redefinição."}
+    await db.password_reset_requests.insert_one({"email": email, "created_at": datetime.now(timezone.utc).isoformat()})
+    recent = await db.password_reset_requests.count_documents({
+        "email": email,
+        "created_at": {"$gte": (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()},
+    })
+    if recent > 5:
+        return generic
+    user = await db.users.find_one({"email": email})
+    if not user:
+        return generic
+    token = secrets.token_urlsafe(32)
+    await db.password_reset_tokens.insert_one({
+        "token_hash": hashlib.sha256(token.encode()).hexdigest(),
+        "user_id": user["user_id"], "email": email,
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1), "used": False,
+    })
+    await send_password_reset_email(user["email"], token)
+    return generic
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(request: Request):
+    body = await request.json()
+    token = body.get("token") or ""
+    new = body.get("new_password") or ""
+    if len(new) < 4:
+        raise HTTPException(status_code=400, detail="A nova senha deve ter ao menos 4 caracteres")
+    h = hashlib.sha256(token.encode()).hexdigest()
+    rec = await db.password_reset_tokens.find_one_and_update(
+        {"token_hash": h, "used": False, "expires_at": {"$gt": datetime.now(timezone.utc)}},
+        {"$set": {"used": True}})
+    if not rec:
+        raise HTTPException(status_code=400, detail="Link inválido ou expirado")
+    await db.users.update_one({"user_id": rec["user_id"]},
+                              {"$set": {"password_hash": hash_password(new)},
+                               "$inc": {"token_version": 1}})
+    await db.password_reset_tokens.delete_many({"user_id": rec["user_id"], "used": False})
+    await db.login_attempts.delete_many({"email": rec["email"]})
     return {"ok": True}
 
 
 # ---------------- Sales ----------------
+def _match_period(d, month, year):
+    sd = d.get("sale_date", "")
+    if year is not None and not sd.startswith(f"{year:04d}"):
+        return False
+    if month is not None:
+        try:
+            if int(sd[5:7]) != month:
+                return False
+        except (ValueError, IndexError):
+            return False
+    return True
+
+
+async def _company_sales(month, year):
+    docs = await db.sales.find({}, {"_id": 0}).to_list(5000)
+    return [d for d in docs if _match_period(d, month, year)]
+
+
 @api_router.get("/sales", response_model=List[Sale])
 async def list_sales(month: Optional[int] = None, year: Optional[int] = None,
                      user: dict = Depends(get_current_user)):
-    query = {"user_id": user["user_id"]}
-    docs = await db.sales.find(query, {"_id": 0}).to_list(2000)
-    results = []
-    for d in docs:
-        sd = d.get("sale_date", "")
-        if year is not None and not sd.startswith(f"{year:04d}"):
-            continue
-        if month is not None:
-            try:
-                if int(sd[5:7]) != month:
-                    continue
-            except (ValueError, IndexError):
-                continue
-        results.append(d)
+    docs = await db.sales.find(_scope_query(user), {"_id": 0}).to_list(5000)
+    results = [d for d in docs if _match_period(d, month, year)]
     results.sort(key=lambda x: x.get("sale_date", ""), reverse=True)
     return results
 
 
 @api_router.post("/sales", response_model=Sale)
 async def create_sale(data: SaleCreate, user: dict = Depends(get_current_user)):
-    sale = Sale(**data.model_dump(), user_id=user["user_id"])
+    payload = data.model_dump()
+    if user.get("role") == "corretor":
+        payload["broker_name"] = _display(user)
+    sale = Sale(**payload, user_id=user["user_id"], owner_id=user["user_id"], owner_name=_display(user))
     await db.sales.insert_one(sale.model_dump())
     return sale
 
 
 @api_router.put("/sales/{sale_id}", response_model=Sale)
 async def update_sale(sale_id: str, data: SaleCreate, user: dict = Depends(get_current_user)):
-    existing = await db.sales.find_one({"id": sale_id, "user_id": user["user_id"]}, {"_id": 0})
+    existing = await db.sales.find_one({"id": sale_id, **_scope_query(user)}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Venda não encontrada")
-    updated = {**existing, **data.model_dump()}
-    await db.sales.update_one({"id": sale_id}, {"$set": data.model_dump()})
-    return updated
+    payload = data.model_dump()
+    if user.get("role") == "corretor":
+        payload["broker_name"] = existing.get("broker_name") or _display(user)
+    await db.sales.update_one({"id": sale_id}, {"$set": payload})
+    return {**existing, **payload}
 
 
 @api_router.delete("/sales/{sale_id}")
 async def delete_sale(sale_id: str, user: dict = Depends(get_current_user)):
-    res = await db.sales.delete_one({"id": sale_id, "user_id": user["user_id"]})
-    if res.deleted_count == 0:
+    sale = await db.sales.find_one({"id": sale_id, **_scope_query(user)}, {"_id": 0})
+    if not sale:
         raise HTTPException(status_code=404, detail="Venda não encontrada")
+    sale["deleted_at"] = datetime.now(timezone.utc).isoformat()
+    sale["deleted_by"] = user["user_id"]
+    sale["deleted_by_name"] = _display(user)
+    await db.sales_history.insert_one(sale)
+    await db.sales.delete_one({"id": sale_id})
     return {"ok": True}
 
 
 @api_router.patch("/sales/{sale_id}/installments/{number}")
 async def toggle_installment(sale_id: str, number: int, user: dict = Depends(get_current_user)):
-    sale = await db.sales.find_one({"id": sale_id, "user_id": user["user_id"]}, {"_id": 0})
+    sale = await db.sales.find_one({"id": sale_id, **_scope_query(user)}, {"_id": 0})
     if not sale:
         raise HTTPException(status_code=404, detail="Venda não encontrada")
     installments = sale.get("installments", [])
@@ -321,6 +567,8 @@ async def stats(month: Optional[int] = None, year: Optional[int] = None,
     entrada_total = sum(s.get("entrada", 0) or 0 for s in sales)
     ja_entrou = sum(_received_amount(s) for s in sales)
     falta_entrar = sum(_pending_amount(s) for s in sales)
+    company = await _company_sales(month, year)
+    vgv_geral = sum(s.get("sale_value", 0) or 0 for s in company)
     return {
         "total_vendido": total_vendido,
         "comissao_total": comissao_total,
@@ -330,13 +578,15 @@ async def stats(month: Optional[int] = None, year: Optional[int] = None,
         "ja_entrou": ja_entrou,
         "falta_entrar": falta_entrar,
         "qtd_vendas": len(sales),
+        "vgv_geral": vgv_geral,
+        "qtd_geral": len(company),
     }
 
 
 @api_router.get("/ranking")
 async def ranking(month: Optional[int] = None, year: Optional[int] = None,
                   user: dict = Depends(get_current_user)):
-    sales = await list_sales(month=month, year=year, user=user)
+    sales = await _company_sales(month, year)
     by_broker = {}
     for s in sales:
         name = s.get("broker_name", "—") or "—"
@@ -349,12 +599,17 @@ async def ranking(month: Optional[int] = None, year: Optional[int] = None,
         b["comissao"] += s.get("commission_value", 0) or 0
         b["comissao_corretor"] += _broker_comm(s)
 
-    brokers = await db.brokers.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(500)
+    brokers = await db.brokers.find({}, {"_id": 0}).to_list(1000)
     photo_map = {}
     for br in brokers:
         for key in (br.get("war_name"), br.get("full_name")):
             if key and br.get("photo"):
                 photo_map[key.strip().lower()] = br["photo"]
+    corretores = await db.users.find({"role": "corretor"}, {"_id": 0}).to_list(1000)
+    for c in corretores:
+        for key in (c.get("war_name"), c.get("name")):
+            if key and c.get("picture"):
+                photo_map[key.strip().lower()] = c["picture"]
     for entry in by_broker.values():
         entry["photo"] = photo_map.get(entry["broker_name"].strip().lower())
     return list(by_broker.values())
@@ -528,7 +783,8 @@ def build_sale_from_row(d, user_id):
         client_email=_clean(d.get("client_email")), broker_name=_clean(d.get("broker_name")) or "—",
         sale_date=date, sale_value=sv, commission_rate=rate, commission_value=cval,
         broker_split=60.0, broker_commission=broker_comm, agency_commission=agency_comm,
-        entrada=entrada, parcelado=parcelado, installments=installments, notes="", user_id=user_id,
+        entrada=entrada, parcelado=parcelado, installments=installments, notes="",
+        user_id=user_id, owner_id=user_id,
     )
 
 
@@ -776,6 +1032,49 @@ async def delete_attachment(att_id: str, user: dict = Depends(get_current_user))
     return {"ok": True}
 
 
+@api_router.get("/corretores")
+async def list_corretores(user: dict = Depends(require_master)):
+    users = await db.users.find({"role": "corretor"}, {"_id": 0, "password_hash": 0}).to_list(500)
+    sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
+    by_owner = {}
+    for s in sales:
+        by_owner.setdefault(s.get("owner_id"), []).append(s)
+    out = []
+    for u in users:
+        mine = by_owner.get(u["user_id"], [])
+        out.append({
+            **u,
+            "qtd_vendas": len(mine),
+            "volume": sum(x.get("sale_value", 0) or 0 for x in mine),
+            "comissao_corretor": sum(_broker_comm(x) for x in mine),
+        })
+    out.sort(key=lambda x: x.get("volume", 0), reverse=True)
+    return out
+
+
+@api_router.get("/corretores/{owner_id}/sales")
+async def corretor_sales(owner_id: str, user: dict = Depends(require_master)):
+    docs = await db.sales.find({"owner_id": owner_id}, {"_id": 0}).to_list(2000)
+    docs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return docs
+
+
+@api_router.patch("/corretores/{owner_id}/active")
+async def toggle_corretor_active(owner_id: str, request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    await db.users.update_one({"user_id": owner_id, "role": "corretor"},
+                              {"$set": {"active": bool(body.get("active", True))}})
+    return {"ok": True}
+
+
+@api_router.get("/history")
+async def history(user: dict = Depends(get_current_user)):
+    q = {} if user.get("role") == "master" else {"deleted_by": user["user_id"]}
+    docs = await db.sales_history.find(q, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda d: d.get("deleted_at", ""), reverse=True)
+    return docs
+
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -785,6 +1084,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def _startup():
+    try:
+        await db.login_attempts.create_index("identifier")
+        await db.login_attempts.create_index("email")
+        await db.password_reset_tokens.create_index("token_hash", unique=True)
+        await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
+        await db.password_reset_requests.create_index("created_at", expireAfterSeconds=900)
+    except Exception as e:
+        logger.warning(f"index setup: {e}")
+    if MASTER_EMAILS:
+        await db.users.update_many({"email": {"$in": list(MASTER_EMAILS)}},
+                                   {"$set": {"role": "master"}})
 
 
 @app.on_event("shutdown")

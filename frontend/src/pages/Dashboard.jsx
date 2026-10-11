@@ -23,7 +23,8 @@ import InstallmentsDialog from "@/components/InstallmentsDialog";
 import ImportDialog from "@/components/ImportDialog";
 import BrokersDialog from "@/components/BrokersDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
-import { LogOut, Moon, Sun, CalendarDays, Users } from "lucide-react";
+import TeamDialog from "@/components/TeamDialog";
+import { LogOut, Moon, Sun, CalendarDays, Users, UsersRound } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -43,6 +44,7 @@ export default function Dashboard() {
   const [importOpen, setImportOpen] = useState(false);
   const [brokersOpen, setBrokersOpen] = useState(false);
   const [attachSale, setAttachSale] = useState(null);
+  const [teamOpen, setTeamOpen] = useState(false);
 
   const params = useMemo(() => {
     const p = { year };
@@ -166,6 +168,10 @@ export default function Dashboard() {
               {theme.dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
 
+            <Button data-testid="btn-open-team" variant="outline" className="h-9 gap-1.5"
+              onClick={() => setTeamOpen(true)}>
+              <UsersRound className="h-4 w-4" /><span className="hidden md:inline">Equipe</span>
+            </Button>
             <Button data-testid="btn-open-brokers" variant="outline" className="h-9 gap-1.5"
               onClick={() => setBrokersOpen(true)}>
               <Users className="h-4 w-4" /><span className="hidden md:inline">Corretores</span>
@@ -261,6 +267,8 @@ export default function Dashboard() {
         onOpenChange={(v) => { if (!v) setAttachSale(null); }}
         sale={attachSale}
       />
+
+      <TeamDialog open={teamOpen} onOpenChange={setTeamOpen} />
     </div>
   );
 }
