@@ -10,10 +10,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { brl, formatDateBR } from "@/lib/format";
-import { Search, Pencil, Trash2, Wallet, Plus } from "lucide-react";
+import { brl, formatDateBR, splitComm } from "@/lib/format";
+import { Search, Pencil, Trash2, Wallet, Plus, Upload } from "lucide-react";
 
-export default function SalesSection({ sales, loading, onAdd, onEdit, onDelete, onOpenInstallments }) {
+export default function SalesSection({ sales, loading, onAdd, onEdit, onDelete, onOpenInstallments, onImport }) {
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {
@@ -23,15 +23,11 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDelete, 
       (s) =>
         (s.property_name || "").toLowerCase().includes(t) ||
         (s.broker_name || "").toLowerCase().includes(t) ||
-        (s.client_name || "").toLowerCase().includes(t)
+        (s.client_name || "").toLowerCase().includes(t) ||
+        (s.quadra || "").toLowerCase().includes(t) ||
+        (s.lote || "").toLowerCase().includes(t)
     );
   }, [sales, q]);
-
-  const receivedOf = (s) => {
-    const inst = s.installments || [];
-    if (inst.length === 0) return s.sale_value - (s.sale_value - (s.entrada || 0));
-    return (s.entrada || 0) + inst.filter((i) => i.received).reduce((a, i) => a + i.value, 0);
-  };
 
   return (
     <Card className="rounded-xl border-border/60 overflow-hidden">
@@ -41,11 +37,14 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDelete, 
           <p className="text-xs text-muted-foreground">{filtered.length} registro(s) no período</p>
         </div>
         <div className="sm:ml-auto flex items-center gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64">
+          <div className="relative flex-1 sm:w-56">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input data-testid="sales-table-search-input" value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar imóvel, corretor..." className="pl-9" />
+              placeholder="Buscar loteamento, corretor..." className="pl-9" />
           </div>
+          <Button data-testid="btn-import-sales" variant="outline" onClick={onImport} className="shrink-0">
+            <Upload className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Importar</span>
+          </Button>
           <Button data-testid="btn-add-new-sale" onClick={onAdd} className="shrink-0">
             <Plus className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Nova venda</span>
           </Button>
@@ -57,7 +56,7 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDelete, 
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead>Data</TableHead>
-              <TableHead>Imóvel</TableHead>
+              <TableHead>Loteamento</TableHead>
               <TableHead>Corretor</TableHead>
               <TableHead className="text-right">Valor</TableHead>
               <TableHead className="text-right">Comissão</TableHead>
@@ -71,23 +70,31 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDelete, 
               <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Carregando...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
               <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                Nenhuma venda encontrada. Clique em "Nova venda" para começar.
+                Nenhuma venda encontrada. Clique em "Nova venda" ou "Importar" para começar.
               </TableCell></TableRow>
             ) : (
               filtered.map((s) => {
                 const pend = (s.installments || []).some((i) => !i.received);
+                const { broker, agency } = splitComm(s);
+                const ql = [s.quadra && `Qd ${s.quadra}`, s.lote && `Lt ${s.lote}`].filter(Boolean).join(" · ");
                 return (
                   <TableRow key={s.id} data-testid={`sale-row-${s.id}`} className="group">
                     <TableCell className="tabular text-sm whitespace-nowrap">{formatDateBR(s.sale_date)}</TableCell>
-                    <TableCell className="font-medium max-w-[200px] truncate">
-                      {s.property_name}
-                      {s.client_name ? <div className="text-xs text-muted-foreground font-normal truncate">{s.client_name}</div> : null}
+                    <TableCell className="font-medium max-w-[220px]">
+                      <div className="truncate">{s.property_name}</div>
+                      {(ql || s.client_name) && (
+                        <div className="text-xs text-muted-foreground font-normal truncate">
+                          {[ql, s.client_name].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm">{s.broker_name}</TableCell>
                     <TableCell className="text-right tabular font-semibold">{brl(s.sale_value)}</TableCell>
                     <TableCell className="text-right tabular text-sm">
                       {brl(s.commission_value)}
-                      <div className="text-xs text-muted-foreground">{s.commission_rate}%</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Corr {brl(broker)} · Imob {brl(agency)}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right tabular text-sm">{brl(s.entrada)}</TableCell>
                     <TableCell>

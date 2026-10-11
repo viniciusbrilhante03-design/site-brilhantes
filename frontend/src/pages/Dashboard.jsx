@@ -20,7 +20,9 @@ import RankingCard from "@/components/RankingCard";
 import SalesSection from "@/components/SalesSection";
 import SaleFormDialog from "@/components/SaleFormDialog";
 import InstallmentsDialog from "@/components/InstallmentsDialog";
-import { Building2, LogOut, Moon, Sun, CalendarDays } from "lucide-react";
+import ImportDialog from "@/components/ImportDialog";
+import BrokersDialog from "@/components/BrokersDialog";
+import { Building2, LogOut, Moon, Sun, CalendarDays, Users } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -37,6 +39,8 @@ export default function Dashboard() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [instSale, setInstSale] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [brokersOpen, setBrokersOpen] = useState(false);
 
   const params = useMemo(() => {
     const p = { year };
@@ -60,15 +64,24 @@ export default function Dashboard() {
     queryKey: ["series", year],
     queryFn: async () => (await api.get("/monthly-series", { params: { year } })).data,
   });
+  const brokersListQ = useQuery({
+    queryKey: ["brokers"],
+    queryFn: async () => (await api.get("/brokers")).data,
+  });
 
   const invalidateAll = () => {
     ["sales", "stats", "ranking", "series"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   };
 
   const brokers = useMemo(() => {
-    const set = new Set((salesQ.data || []).map((s) => s.broker_name).filter(Boolean));
+    const set = new Set();
+    (brokersListQ.data || []).forEach((b) => {
+      const n = b.war_name || b.full_name;
+      if (n) set.add(n);
+    });
+    (salesQ.data || []).forEach((s) => s.broker_name && set.add(s.broker_name));
     return Array.from(set);
-  }, [salesQ.data]);
+  }, [brokersListQ.data, salesQ.data]);
 
   const createMut = useMutation({
     mutationFn: (payload) =>
@@ -137,6 +150,11 @@ export default function Dashboard() {
               {theme.dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
 
+            <Button data-testid="btn-open-brokers" variant="outline" className="h-9 gap-1.5"
+              onClick={() => setBrokersOpen(true)}>
+              <Users className="h-4 w-4" /><span className="hidden md:inline">Corretores</span>
+            </Button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button data-testid="user-menu" className="outline-none">
@@ -189,6 +207,7 @@ export default function Dashboard() {
           onEdit={(s) => { setEditing(s); setFormOpen(true); }}
           onDelete={(id) => deleteMut.mutate(id)}
           onOpenInstallments={(s) => setInstSale(s)}
+          onImport={() => setImportOpen(true)}
         />
       </main>
 
@@ -205,6 +224,18 @@ export default function Dashboard() {
         onOpenChange={(v) => { if (!v) setInstSale(null); }}
         sale={instSale}
         onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })}
+      />
+
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={invalidateAll}
+      />
+
+      <BrokersDialog
+        open={brokersOpen}
+        onOpenChange={setBrokersOpen}
+        ranking={rankingQ.data}
       />
     </div>
   );

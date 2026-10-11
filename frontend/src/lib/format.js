@@ -21,3 +21,14 @@ export const formatDateBR = (iso) => {
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
 };
+
+export const splitComm = (s) => {
+  const total = Number(s?.commission_value) || 0;
+  let broker = Number(s?.broker_commission);
+  if (!broker && !Number(s?.agency_commission)) {
+    const sp = Number(s?.broker_split) || 60;
+    broker = (total * sp) / 100;
+  }
+  broker = broker || 0;
+  return { broker, agency: total - broker };
+};
