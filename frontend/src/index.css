@@ -1,0 +1,116 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: "JetBrains Mono", monospace;
+}
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 165 30% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 165 30% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 165 30% 12%;
+    --primary: 158 42% 18%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 43 55% 94%;
+    --secondary-foreground: 158 42% 18%;
+    --muted: 160 15% 94%;
+    --muted-foreground: 160 8% 42%;
+    --accent: 43 60% 48%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 160 14% 88%;
+    --input: 160 14% 88%;
+    --ring: 158 42% 18%;
+    --gold: 40 52% 56%;
+    --emerald: 160 84% 39%;
+    --amber: 38 92% 50%;
+    --rose: 0 84% 60%;
+    --chart-1: 158 42% 25%;
+    --chart-2: 43 60% 48%;
+    --chart-3: 160 84% 39%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 197 37% 34%;
+    --radius: 0.75rem;
+  }
+  .dark {
+    --background: 165 30% 6%;
+    --foreground: 150 15% 92%;
+    --card: 165 26% 9%;
+    --card-foreground: 150 15% 92%;
+    --popover: 165 26% 9%;
+    --popover-foreground: 150 15% 92%;
+    --primary: 158 50% 42%;
+    --primary-foreground: 165 30% 6%;
+    --secondary: 165 20% 15%;
+    --secondary-foreground: 150 15% 92%;
+    --muted: 165 18% 14%;
+    --muted-foreground: 150 8% 60%;
+    --accent: 43 60% 52%;
+    --accent-foreground: 165 30% 6%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 165 18% 18%;
+    --input: 165 18% 18%;
+    --ring: 158 50% 42%;
+    --gold: 40 55% 60%;
+    --emerald: 160 70% 45%;
+    --amber: 38 90% 55%;
+    --rose: 0 72% 58%;
+    --chart-1: 158 50% 48%;
+    --chart-2: 43 60% 55%;
+    --chart-3: 160 70% 45%;
+    --chart-4: 38 90% 55%;
+    --chart-5: 197 40% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  h1, h2, h3, h4, .font-heading {
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+  .font-mono, .tabular {
+    font-family: "JetBrains Mono", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .fade-up {
+    animation: fadeUp 0.5s ease both;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .glass {
+    backdrop-filter: blur(14px);
+    background-color: hsl(var(--card) / 0.72);
+  }
+}
+
+@layer base {
+  [data-debug-wrapper="true"] {
+    display: contents !important;
+  }
+}

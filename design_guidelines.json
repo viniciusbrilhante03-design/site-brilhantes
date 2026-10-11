@@ -1,0 +1,100 @@
+{
+  "project_title": "Brilhantes Imóveis - Gestão de Vendas e Comissões Imobiliárias",
+  "app_type": "dashboard",
+  "language": "pt-BR",
+  "theme": {
+    "default_mode": "light",
+    "theme_toggle_supported": true,
+    "archetype": "LUXURY & PERFORMANCE FINANCE",
+    "primary_color": "hsl(158, 42%, 18%)",
+    "primary_foreground": "hsl(0, 0%, 98%)",
+    "secondary_color": "hsl(43, 60%, 48%)",
+    "secondary_foreground": "hsl(0, 0%, 100%)",
+    "background_light": "#F8FAFC",
+    "card_background_light": "#FFFFFF",
+    "background_dark": "#0B1110",
+    "card_background_dark": "#121C1A",
+    "accent_gold": "#C5A059",
+    "emerald_glow": "#10B981",
+    "amber_warning": "#F59E0B",
+    "rose_danger": "#EF4444"
+  },
+  "typography": {
+    "heading_font": "Plus Jakarta Sans, sans-serif",
+    "body_font": "DM Sans, sans-serif",
+    "mono_font": "JetBrains Mono, monospace",
+    "scale": {
+      "h1": "text-3xl sm:text-4xl font-extrabold tracking-tight",
+      "h2": "text-xl sm:text-2xl font-bold tracking-tight",
+      "h3": "text-lg sm:text-xl font-semibold",
+      "subtitle": "text-sm sm:text-base text-muted-foreground",
+      "kpi_value": "text-2xl sm:text-3xl font-extrabold tracking-tight",
+      "badge": "text-xs font-semibold px-2.5 py-0.5 rounded-full"
+    }
+  },
+  "key_functionalities": [
+    "Tela de Login Google com Branding Exclusivo Brilhantes Imóveis e alternador de perfil demonstrativo",
+    "Dashboard Financeiro de Vendas com KPIs em tempo real (Total Vendido Mês/Ano, Comissão Total, Valor de Entrada, A Receber/Falta Entrar, Já Entrado, Qtd de Vendas)",
+    "Filtros Temporais por Mês, Ano e Período Personalizado",
+    "Tabela e Lista Completa de Vendas com Ordenação, Busca por Imóvel/Corretor/Cliente e Ações",
+    "Modal/Formulário de Cadastro e Edição de Venda (Cálculo Automático de Comissão %, Valor R$, Entrada, Opção Parcelado, Número de Parcelas, Corretor)",
+    "Gerenciador de Fluxo de Recebíveis / Parcelas com funcionalidade 'Marcar como Recebido' (Baixa de Parcela)",
+    "Ranking de Corretores Interativo e Alternável (por Qtd de Vendas, por Volume R$ e por Comissão Gerada) com Pódio Visual",
+    "Resumo em Destaque do que 'Já Entrou' vs 'O Que Falta Entrar'",
+    "Exportação de Relatórios em PDF / CSV e Notificações Toasts com Sonner"
+  ],
+  "layout_and_grid": {
+    "sidebar": "Fixa no Desktop (256px) com efeito Glassmorphism sutil, recolhível em telas menores",
+    "header": "Sticky header com z-40, busca rápida, seletor de período (Mês/Ano), indicador do usuário logado e alternador de tema",
+    "bento_grid_kpi": "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 p-4 md:p-6",
+    "content_spacing": "p-4 sm:p-6 lg:p-8 space-y-6 md:space-y-8",
+    "card_style": "rounded-xl border border-border/60 bg-card shadow-sm hover:shadow-md transition-all duration-200"
+  },
+  "component_guidelines": {
+    "charts": "Recharts com gradiente suave nas áreas, tooltips customizados em R$ e legendas limpas",
+    "tables": "Shadcn Table com hover, cabeçalhos fixos, formatação de moeda brasileira (R$ 1.250.000,00) e badges de status para parcelamento",
+    "forms": "React Hook Form + Zod + Shadcn Form/Input/Select/Switch/Popover/Calendar para datas",
+    "modals": "Shadcn Dialog e Sheet para cadastros rápidos com overlay desfocado (backdrop-blur-md)",
+    "toasts": "Sonner toasts configurado em src/components/ui/sonner.jsx com feedback visual imediato ao dar baixa em parcelas ou criar vendas"
+  },
+  "data_testid_rules": {
+    "mandatory": true,
+    "pattern": "kebab-case",
+    "examples": [
+      "google-login-button",
+      "kpi-total-vendas-mes",
+      "kpi-comissao-total",
+      "kpi-falta-entrar",
+      "filter-month-select",
+      "filter-year-select",
+      "sales-table-search-input",
+      "btn-add-new-sale",
+      "sale-form-property-input",
+      "sale-form-value-input",
+      "sale-form-commission-rate",
+      "sale-form-commission-value",
+      "sale-form-broker-select",
+      "sale-form-submit-button",
+      "broker-ranking-toggle-volume",
+      "broker-ranking-toggle-count",
+      "btn-mark-installment-received-1"
+    ]
+  },
+  "image_urls": {
+    "hero_building": "https://images.unsplash.com/photo-1760072513367-55182245e76c?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "luxury_interior": "https://images.unsplash.com/photo-1628745277862-bc0b2d68c50c?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "modern_villa": "https://images.unsplash.com/photo-1704040686413-2c607dbd2f06?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "broker_avatars": [
+      "https://images.unsplash.com/photo-1581065178047-8ee15951ede6?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "https://images.unsplash.com/photo-1610631066894-62452ccb927c?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "https://images.unsplash.com/photo-1780733064206-4f200e41daa8?crop=entropy&cs=srgb&fm=jpg&q=85"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Certifique-se de que a interface esteja 100% em Português do Brasil (pt-BR) e que todos os valores financeiros estejam formatados como Moeda Brasileira (R$ 1.500.000,00).",
+    "Crie uma experiência completa de Dashboard Imobiliário para 'Brilhantes Imóveis' com dados iniciais realistas e persistência em localStorage para simular backend dinâmico.",
+    "Utilize os componentes Shadcn instalados em src/components/ui/ e adicione o Sonner para notificações.",
+    "Garanta a presença de data-testid em todos os botões, entradas de texto, cards de KPI, opções de filtro e itens das tabelas.",
+    "Mantenha a paleta sofisticada baseada em Verde Esmeralda Imobiliário (#0F382C) e Dourado Nobre (#C5A059), refletindo o luxo e a seriedade do setor imobiliário de alto padrão."
+  ]
+}
