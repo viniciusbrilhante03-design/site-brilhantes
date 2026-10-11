@@ -165,6 +165,16 @@ class Broker(BrokerBase):
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+class CorretorProfile(BaseModel):
+    name: Optional[str] = ""
+    war_name: Optional[str] = ""
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
+    creci: Optional[str] = ""
+    picture: Optional[str] = ""
+    active: bool = True
+
+
 # ---------------- Auth ----------------
 async def _resolve_token(token: str):
     session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
@@ -1100,22 +1110,67 @@ async def delete_attachment(att_id: str, user: dict = Depends(get_current_user))
 
 @api_router.get("/corretores")
 async def list_corretores(user: dict = Depends(require_master)):
-    users = await db.users.find({"role": "corretor"}, {"_id": 0, "password_hash": 0}).to_list(500)
+    users = await db.users.find({"role": "corretor"}, {"_id": 0}).to_list(500)
     sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
     by_owner = {}
     for s in sales:
         by_owner.setdefault(s.get("owner_id"), []).append(s)
     out = []
     for u in users:
+        has_login = bool(u.pop("password_hash", None))
         mine = by_owner.get(u["user_id"], [])
         out.append({
             **u,
+            "has_login": has_login,
             "qtd_vendas": len(mine),
             "volume": sum(x.get("sale_value", 0) or 0 for x in mine),
             "comissao_corretor": sum(_broker_comm(x) for x in mine),
         })
     out.sort(key=lambda x: x.get("volume", 0), reverse=True)
     return out
+
+
+@api_router.post("/corretores")
+async def create_corretor(data: CorretorProfile, user: dict = Depends(require_master)):
+    if not (data.name or data.war_name):
+        raise HTTPException(status_code=400, detail="Informe o nome do corretor")
+    email = (data.email or "").strip().lower()
+    if email and await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="E-mail já cadastrado")
+    uid = f"user_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "user_id": uid, "email": email, "name": data.name or "", "war_name": data.war_name or "",
+        "phone": data.phone or "", "creci": data.creci or "", "picture": data.picture or "",
+        "role": "corretor", "active": data.active, "token_version": 0, "manual": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.put("/corretores/{owner_id}")
+async def update_corretor(owner_id: str, data: CorretorProfile, user: dict = Depends(require_master)):
+    existing = await db.users.find_one({"user_id": owner_id, "role": "corretor"}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Corretor não encontrado")
+    email = (data.email or "").strip().lower()
+    if email and email != existing.get("email"):
+        if await db.users.find_one({"email": email, "user_id": {"$ne": owner_id}}):
+            raise HTTPException(status_code=400, detail="E-mail já cadastrado por outro usuário")
+    upd = {"name": data.name or "", "war_name": data.war_name or "", "email": email,
+           "phone": data.phone or "", "creci": data.creci or "", "picture": data.picture or "",
+           "active": data.active}
+    await db.users.update_one({"user_id": owner_id}, {"$set": upd})
+    return {"ok": True}
+
+
+@api_router.delete("/corretores/{owner_id}")
+async def delete_corretor(owner_id: str, user: dict = Depends(require_master)):
+    res = await db.users.delete_one({"user_id": owner_id, "role": "corretor"})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Corretor não encontrado")
+    return {"ok": True}
 
 
 @api_router.get("/corretores/{owner_id}/sales")
@@ -1170,6 +1225,29 @@ async def _startup():
             await _ensure_loteamento(n)
     except Exception as e:
         logger.warning(f"loteamento backfill: {e}")
+    # Unify legacy manual brokers into corretor users
+    try:
+        for b in await db.brokers.find({}, {"_id": 0}).to_list(1000):
+            if not (b.get("war_name") or b.get("full_name")):
+                continue
+            match = await _resolve_corretor_by_name(b.get("war_name")) or await _resolve_corretor_by_name(b.get("full_name"))
+            if match:
+                if b.get("photo") and not match.get("picture"):
+                    await db.users.update_one({"user_id": match["user_id"]}, {"$set": {"picture": b["photo"]}})
+                continue
+            email = (b.get("email") or "").strip().lower()
+            if email and await db.users.find_one({"email": email}):
+                email = ""
+            await db.users.insert_one({
+                "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email,
+                "name": b.get("full_name") or "", "war_name": b.get("war_name") or "",
+                "phone": b.get("phone") or "", "creci": b.get("creci") or "",
+                "picture": b.get("photo") or "", "role": "corretor", "active": True,
+                "token_version": 0, "manual": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+    except Exception as e:
+        logger.warning(f"broker migration: {e}")
 
 
 @app.on_event("shutdown")

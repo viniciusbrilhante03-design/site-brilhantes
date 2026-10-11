@@ -21,10 +21,10 @@ import SalesSection from "@/components/SalesSection";
 import SaleFormDialog from "@/components/SaleFormDialog";
 import InstallmentsDialog from "@/components/InstallmentsDialog";
 import ImportDialog from "@/components/ImportDialog";
-import BrokersDialog from "@/components/BrokersDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import TeamDialog from "@/components/TeamDialog";
-import { LogOut, Moon, Sun, CalendarDays, Users, UsersRound } from "lucide-react";
+
+import { LogOut, Moon, Sun, CalendarDays, UsersRound } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -42,7 +42,6 @@ export default function Dashboard() {
   const [editing, setEditing] = useState(null);
   const [instSale, setInstSale] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [brokersOpen, setBrokersOpen] = useState(false);
   const [attachSale, setAttachSale] = useState(null);
   const [teamOpen, setTeamOpen] = useState(false);
 
@@ -68,10 +67,6 @@ export default function Dashboard() {
     queryKey: ["series", year],
     queryFn: async () => (await api.get("/monthly-series", { params: { year } })).data,
   });
-  const brokersListQ = useQuery({
-    queryKey: ["brokers"],
-    queryFn: async () => (await api.get("/brokers")).data,
-  });
   const loteamentosQ = useQuery({
     queryKey: ["loteamentos"],
     queryFn: async () => (await api.get("/loteamentos")).data,
@@ -90,13 +85,9 @@ export default function Dashboard() {
   const brokers = useMemo(() => {
     const set = new Set();
     (corretoresQ.data || []).forEach((c) => { const n = c.war_name || c.name; if (n) set.add(n); });
-    (brokersListQ.data || []).forEach((b) => {
-      const n = b.war_name || b.full_name;
-      if (n) set.add(n);
-    });
     (salesQ.data || []).forEach((s) => s.broker_name && set.add(s.broker_name));
     return Array.from(set);
-  }, [corretoresQ.data, brokersListQ.data, salesQ.data]);
+  }, [corretoresQ.data, salesQ.data]);
 
   const createMut = useMutation({
     mutationFn: (payload) =>
@@ -183,10 +174,6 @@ export default function Dashboard() {
               onClick={() => setTeamOpen(true)}>
               <UsersRound className="h-4 w-4" /><span className="hidden md:inline">Equipe</span>
             </Button>
-            <Button data-testid="btn-open-brokers" variant="outline" className="h-9 gap-1.5"
-              onClick={() => setBrokersOpen(true)}>
-              <Users className="h-4 w-4" /><span className="hidden md:inline">Corretores</span>
-            </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -266,12 +253,6 @@ export default function Dashboard() {
         open={importOpen}
         onOpenChange={setImportOpen}
         onImported={invalidateAll}
-      />
-
-      <BrokersDialog
-        open={brokersOpen}
-        onOpenChange={setBrokersOpen}
-        ranking={rankingQ.data}
       />
 
       <AttachmentsDialog
