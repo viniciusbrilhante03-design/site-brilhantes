@@ -86,10 +86,10 @@ export default function CorretorDashboard() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 glass border-b border-border/60">
-        <div className="flex items-center gap-3 px-4 md:px-6 h-16">
+        <div className="flex flex-wrap items-center gap-3 px-4 md:px-6 min-h-16 py-2">
           <img src={theme.dark ? "/logo-dark.jpg" : "/logo-light.jpg"} alt="Brilhante's Imóveis" className="h-11 w-auto rounded-lg shrink-0" />
           <div className="hidden md:block"><div className="text-[11px] text-muted-foreground tracking-[0.2em] uppercase">Área do Corretor</div></div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <Select value={String(month)} onValueChange={(v) => setMonth(v === ALL ? ALL : Number(v))}>
               <SelectTrigger data-testid="filter-month-select" className="w-[130px] h-9"><CalendarDays className="h-4 w-4 mr-1 text-muted-foreground" /><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value={ALL}>Ano inteiro</SelectItem>{MESES.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
@@ -132,7 +132,7 @@ export default function CorretorDashboard() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 min-w-0">
             <SalesSection
               sales={salesQ.data} loading={salesQ.isLoading}
               onAdd={() => { setEditing(null); setFormOpen(true); }}
@@ -144,7 +144,7 @@ export default function CorretorDashboard() {
               onOpenAttachments={(x) => setAttachSale(x)}
             />
           </div>
-          <div className="space-y-6"><RankingCard /><GoalsCard goals={goalsQ.data} /></div>
+          <div className="space-y-6 min-w-0"><RankingCard /><GoalsCard goals={goalsQ.data} /></div>
         </div>
       </main>
 

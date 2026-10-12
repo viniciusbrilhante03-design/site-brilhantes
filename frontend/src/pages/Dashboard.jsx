@@ -154,14 +154,14 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-40 glass border-b border-border/60">
-        <div className="flex items-center gap-3 px-4 md:px-6 h-16">
+        <div className="flex flex-wrap items-center gap-3 px-4 md:px-6 min-h-16 py-2">
           <img src={theme.dark ? "/logo-dark.jpg" : "/logo-light.jpg"} alt="Brilhante's Imóveis"
             className="h-11 w-auto rounded-lg shrink-0" data-testid="app-logo" />
           <div className="hidden md:block">
             <div className="text-[11px] text-muted-foreground tracking-[0.2em] uppercase">Gestão de Vendas</div>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <Select value={String(month)} onValueChange={(v) => setMonth(v === ALL ? ALL : Number(v))}>
               <SelectTrigger data-testid="filter-month-select" className="w-[130px] h-9">
                 <CalendarDays className="h-4 w-4 mr-1 text-muted-foreground" />
@@ -234,10 +234,10 @@ export default function Dashboard() {
         <KpiGrid stats={statsQ.data} loading={statsQ.isLoading} />
 
         <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 min-w-0">
             <MonthlyChart series={seriesQ.data} activeMonth={month === ALL ? null : month} />
           </div>
-          <div className="lg:col-span-1 space-y-6">
+          <div className="lg:col-span-1 min-w-0 space-y-6">
             <RankingCard />
             <GoalsCard goals={goalsQ.data} onManage={() => setGoalsOpen(true)} />
           </div>

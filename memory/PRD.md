@@ -120,6 +120,14 @@ entrou e o que falta entrar. Controle datado.
   via goal.notified_levels). Sino com badge no cabeçalho (NotificationsBell), nos painéis do gestor e do corretor.
 - Testes: 11/11 backend (test_ranking_duplas_notifications.py) + fluxos frontend 100% (iteration_7.json).
 
+### Iteração 10 (2026-06 fork) — Filtros de Vendas (item 12/16) ✅
+- SalesSection agora tem painel de filtros (botão "Filtros" com contador de ativos): Loteamento, Corretor,
+  Cliente, Quadra, Lote, Período (intervalo de datas) e Status (À vista / Quitado / A receber).
+- Filtragem client-side sobre as vendas já carregadas; corretor em parceria é reconhecido via brokers[].name.
+- Busca rápida (texto) mantida; botão "Limpar filtros".
+- Correção mobile: cabeçalhos (gestor/corretor) e a barra de ações agora quebram linha (flex-wrap) em telas
+  pequenas; grid com min-w-0 para evitar overflow. Tabela de vendas rola horizontalmente (overflow-x-auto) no mobile.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
