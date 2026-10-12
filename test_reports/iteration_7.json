@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 7 — Validated the three new features end-to-end: (1) RANKING por período (start/end + month/year) and client-side ordering; (2) DUPLAS (broker-groups CRUD + ranking merging); (3) NOTIFICATIONS (new_sale for master + ranking for corretor after POST /api/sales, read-all + per-id read, bell+badge UI). Backend: 11/11 pytest in /app/backend/tests/test_ranking_duplas_notifications.py pass. Frontend (master session_token=qa_session_vinicius_001): RankingCard self-fetches; [ranking-period-select] -> Personalizado reveals [ranking-custom-start]/[ranking-custom-end]; filtering 2026-01-01..2026-12-31 returned 6 rows; order toggles [ranking-order-volume|count|commission] change the right-hand main metric (verified R$ shown for commission, qty-integer for count); NotificationsBell dropdown [notifications-menu] opens; TeamDialog -> [tab-duplas] -> GroupsManager works: created TEST_DUPLA_UI via [group-name-input] + 2x [group-member-*] + [group-save-btn] -> appears in [group-item-*] -> deleted via [group-del-*] + AlertDialog Remover (toast 'Dupla removida.'). Regression: multi-broker 100% rule still returns 400 when splits don't sum to 100. Final DB state verified: 20 sales / 0 broker-groups / 0 goals (no TEST_* leakage).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ranking_duplas_notifications.py",
+    "/app/test_reports/pytest/pytest_iter7.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 1709 lines across auth/sales/clients/goals/attachments/export/import/ranking/broker-groups/notifications. Carrying forward prior iteration recommendation to split into routers (sales_router, ranking_router, notifications_router, etc.).",
+    "GET /api/ranking with start/end loads up to 5000 sales from Mongo and filters in Python via _in_range. Fine today (20 docs) but should use a Mongo $gte/$lte query on sale_date when data grows.",
+    "_post_sale_notifications fetches all sales (to_list(5000)) and iterates every broker goal on every POST /api/sales — O(sales + goals). Acceptable now; batch/cache if volume grows.",
+    "Notifications are inserted serially inside a try/except that swallows ALL exceptions and only logs a warning. Good for sale-creation resilience, but silent on bugs. Consider logging at ERROR level with sale_id for observability.",
+    "BrokerGroupCreate uses raw str for name/members. Member names are matched case-insensitively by exact strip().lower() against broker.name — if a corretor's war_name is later edited the group silently stops merging. Consider referencing by user_id (owner_id) instead of display name.",
+    "/api/notifications caps at 50 items in the response but reads 200 from Mongo first — fine, just make it configurable via query param (?limit=).",
+    "NotificationsBell: auto-mark-all-read on open means a user can never see which specific notification is new after re-opening. Consider marking read on individual click/hover instead of on-open.",
+    "RankingCard period 'week' uses now.getDay() client-side — timezone-sensitive. Fine for Brazil-only, but if used from a different TZ the week boundary will shift."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ranking_duplas_notifications.py (new; 11 tests across 4 classes + final-state check)"
+  ],
+  "success_rate": { "backend": "100% (11/11)", "frontend": "100% of ranking + duplas + notifications flows under test" },
+  "test_credentials": "Master cookie session_token=qa_session_vinicius_001 or Authorization: Bearer qa_session_vinicius_001. Corretor Carlão: carlos.teste@brilhantes.com / 12345678900 — login sets httpOnly cookie access_token.",
+  "seed_data_creation": "Transient only. Module-scoped tracked fixture creates TEST_* sales, broker-groups and notifications; teardown DELETEs each via API, then purges sales_history and test-tagged notifications directly in Mongo. Final state verified post-run: 20 sales / 0 groups / 0 goals; sales_history=3 (pre-existing real deletions, untouched); notifications=14 (pre-existing real-user ones, no TEST_* left).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_ranking_duplas_notifications.py -v -o addopts=''` (project pytest.ini uses -n2 xdist which breaks module-scoped fixture teardown ordering for the final cleanup assertion). The _post_sale_notifications also fires 'goal' notifications when a broker goal crosses 90%/100%; not stressed in this iteration because goals are currently empty in the DB. If you add goal-notification tests, remember to cleanup goals.notified_levels or the second trigger won't fire. The RankingCard default 'Este mês' = October (env clock ~Oct 2026), which currently has only 1 sale (Vinicius 20405) — not a bug.",
+  "rca of the issue": "N/A — no bugs found this iteration."
+}

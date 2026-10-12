@@ -110,6 +110,16 @@ entrou e o que falta entrar. Controle datado.
 - GoalsDialog: criar/remover metas coletivas e individuais, VGV ou quantidade, mês ou ano.
 - Testes: 11/11 backend (test_clients_goals.py) + fluxos frontend 100% (iteration_6.json). Correção: botão Gerenciar type="button".
 
+### Iteração 9 (2026-06 fork) — Ranking por período, Duplas e Notificações (itens 5,8,10) ✅
+- **Ranking por período**: GET /api/ranking aceita start/end (intervalo) além de month/year; RankingCard agora busca sozinho
+  com seletor Semana/Mês/Ano/Personalizado e ordenação Volume/Quantidade/Comissão.
+- **Duplas no ranking**: db.broker_groups + CRUD /api/broker-groups (master); ranking mescla membros em um único item
+  (is_group) somando vendas/comissão sem apagar perfis. Gerenciado em Equipe › aba "Duplas" (GroupsManager, mín. 2 corretores).
+- **Notificações**: db.notifications + /api/notifications (lista+unread), read-all, read/{id}. Geração ao criar venda:
+  gestor recebe "nova venda"; corretor recebe sua posição no ranking e alerta de proximidade de meta (90%/100%, deduplicado
+  via goal.notified_levels). Sino com badge no cabeçalho (NotificationsBell), nos painéis do gestor e do corretor.
+- Testes: 11/11 backend (test_ranking_duplas_notifications.py) + fluxos frontend 100% (iteration_7.json).
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
