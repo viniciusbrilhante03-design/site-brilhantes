@@ -128,6 +128,16 @@ entrou e o que falta entrar. Controle datado.
 - Correção mobile: cabeçalhos (gestor/corretor) e a barra de ações agora quebram linha (flex-wrap) em telas
   pequenas; grid com min-w-0 para evitar overflow. Tabela de vendas rola horizontalmente (overflow-x-auto) no mobile.
 
+### Iteração 11 (2026-06 fork) — Importação Inteligente com IA (item 14/19) ✅
+- Integração **Gemini 3.1 Pro** (gemini-3.1-pro-preview) via emergentintegrations + chave Emergent (EMERGENT_LLM_KEY no .env).
+- POST /api/sales/import-ai/preview (master): extrai texto do arquivo (CSV decode / Excel pandas / PDF pdfplumber),
+  envia ao Gemini que devolve JSON estruturado; normaliza datas/valores/comissão; marca duplicatas
+  (Cliente+Loteamento+Quadra+Lote+Data+Valor+Corretor) e sinaliza novo corretor / novo loteamento. Nada é salvo aqui.
+- POST /api/sales/import-ai/confirm (master): importa as linhas selecionadas, auto-cadastra loteamentos e corretores
+  novos, gera parcelas. Retorna imported + new_corretores + new_loteamentos.
+- UI: ImportDialog com abas "Com IA" (upload → prévia com seleção/duplicatas → confirmar) e "Planilha".
+- Validado via curl (CSV bagunçado com ; e TOTAL ignorado; dedup 3/3 na re-análise) e browser (upload → prévia). Dados limpos (20 vendas).
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

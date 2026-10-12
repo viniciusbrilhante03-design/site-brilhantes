@@ -1324,6 +1324,184 @@ async def import_sales(file: UploadFile = File(...), user: dict = Depends(get_cu
     return {"imported": len(sales)}
 
 
+# ---------------- Import inteligente (IA / Gemini) ----------------
+AI_IMPORT_SYSTEM = (
+    "Você é um assistente especialista em extrair vendas de imóveis/loteamentos de relatórios "
+    "de construtoras (planilhas ou PDFs). Você entende português do Brasil, valores em Real (R$) "
+    "e datas em formato brasileiro. Sempre responda APENAS com JSON válido, sem comentários."
+)
+
+
+def _extract_text_for_ai(content: bytes, filename: str) -> str:
+    name = (filename or "").lower()
+    if name.endswith(".csv"):
+        try:
+            return content.decode("utf-8")
+        except UnicodeDecodeError:
+            return content.decode("latin-1", errors="ignore")
+    if name.endswith((".xlsx", ".xls")):
+        sheets = pd.read_excel(io.BytesIO(content), sheet_name=None)
+        return "\n\n".join(f"# Planilha: {s}\n{df.to_csv(index=False)}" for s, df in sheets.items())
+    if name.endswith(".pdf"):
+        import pdfplumber
+        out = []
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            for page in pdf.pages:
+                out.append(page.extract_text() or "")
+                for t in page.extract_tables() or []:
+                    out.append("\n".join(" | ".join((c or "") for c in row) for row in t))
+        return "\n".join(out)
+    raise HTTPException(status_code=422, detail="Formato não suportado. Envie .xlsx, .csv ou .pdf.")
+
+
+def _parse_ai_json(raw: str):
+    import json
+    s = (raw or "").strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```[a-zA-Z]*\n?", "", s)
+        s = re.sub(r"\n?```$", "", s).strip()
+    m = re.search(r"\[.*\]", s, re.DOTALL)
+    if m:
+        s = m.group(0)
+    try:
+        data = json.loads(s)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="A IA não retornou dados válidos. Tente novamente ou revise o arquivo.")
+    return data if isinstance(data, list) else []
+
+
+async def _ai_extract_sales(text: str):
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    key = os.environ.get("EMERGENT_LLM_KEY")
+    if not key:
+        raise HTTPException(status_code=500, detail="Chave de IA não configurada.")
+    chat = LlmChat(api_key=key, session_id=f"import_{uuid.uuid4().hex[:8]}",
+                   system_message=AI_IMPORT_SYSTEM).with_model("gemini", "gemini-3.1-pro-preview")
+    prompt = (
+        "Extraia TODAS as vendas do relatório abaixo e responda APENAS com um array JSON "
+        "(sem texto extra, sem markdown). Cada item deve ter os campos: property_name (loteamento), "
+        "quadra, lote, client_name, client_phone, client_email, broker_name (corretor), "
+        "sale_date (converta qualquer formato para YYYY-MM-DD), sale_value (número puro, sem R$), "
+        "commission_rate (número ou null), commission_value (número ou null), num_parcelas (inteiro ou null). "
+        "Use null quando o dado não existir. Ignore linhas de cabeçalho/total/rodapé.\n\nRELATÓRIO:\n" + text
+    )
+    resp = await chat.send_message(UserMessage(text=prompt))
+    raw = resp if isinstance(resp, str) else getattr(resp, "content", str(resp))
+    return _parse_ai_json(raw)
+
+
+def _dup_key(d: dict) -> str:
+    return "|".join([
+        _norm(d.get("client_name")), _norm(d.get("property_name")),
+        _norm(str(d.get("quadra") or "")), _norm(str(d.get("lote") or "")),
+        (d.get("sale_date") or ""), str(d.get("sale_value") or ""),
+        _norm(d.get("broker_name")),
+    ])
+
+
+@api_router.post("/sales/import-ai/preview")
+async def import_ai_preview(file: UploadFile = File(...), user: dict = Depends(require_master)):
+    content = await file.read()
+    text = _extract_text_for_ai(content, file.filename or "")
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="Não foi possível ler conteúdo do arquivo.")
+    if len(text) > 60000:
+        text = text[:60000]
+    rows = await _ai_extract_sales(text)
+    existing = await db.sales.find({}, {"_id": 0}).to_list(5000)
+    existing_keys = {_dup_key(s): s.get("id") for s in existing}
+    lot_set = {(l.get("name") or "").strip().lower() for l in await db.loteamentos.find({}, {"_id": 0}).to_list(3000)}
+    corr_names = set()
+    for c in await db.users.find({"role": "corretor"}, {"_id": 0}).to_list(1000):
+        for k in (c.get("war_name"), c.get("name")):
+            if k:
+                corr_names.add(k.strip().lower())
+    out = []
+    for d in rows:
+        sv = parse_brl(d.get("sale_value"))
+        rate = parse_brl(d.get("commission_rate"))
+        cval = parse_brl(d.get("commission_value"))
+        if not cval and rate:
+            cval = round(sv * rate / 100, 2)
+        item = {
+            "property_name": _clean(d.get("property_name")), "quadra": _clean(d.get("quadra")),
+            "lote": _clean(d.get("lote")), "client_name": _clean(d.get("client_name")),
+            "client_phone": _clean(d.get("client_phone")), "client_email": _clean(d.get("client_email")),
+            "broker_name": _clean(d.get("broker_name")), "sale_date": parse_date(d.get("sale_date")),
+            "sale_value": sv, "commission_rate": rate, "commission_value": cval,
+            "num_parcelas": int(parse_brl(d.get("num_parcelas")) or 0),
+        }
+        k = _dup_key(item)
+        item["is_duplicate"] = k in existing_keys
+        item["duplicate_of"] = existing_keys.get(k)
+        item["new_loteamento"] = bool(item["property_name"]) and item["property_name"].lower() not in lot_set
+        item["new_corretor"] = bool(item["broker_name"]) and item["broker_name"].lower() not in corr_names
+        out.append(item)
+    return {"rows": out, "total": len(out), "duplicates": sum(1 for r in out if r["is_duplicate"])}
+
+
+class AIImportConfirm(BaseModel):
+    rows: List[dict] = []
+
+
+@api_router.post("/sales/import-ai/confirm")
+async def import_ai_confirm(data: AIImportConfirm, user: dict = Depends(require_master)):
+    created, new_brokers, new_lots = 0, 0, 0
+    for d in data.rows:
+        prop = _clean(d.get("property_name"))
+        sv = parse_brl(d.get("sale_value"))
+        if not prop and not sv:
+            continue
+        if prop and not await _loteamento_exists(prop):
+            await _ensure_loteamento(prop)
+            new_lots += 1
+        broker = _clean(d.get("broker_name"))
+        owner_id, owner_name = user["user_id"], _display(user)
+        if broker:
+            corr = await _resolve_corretor_by_name(broker)
+            if not corr:
+                uid = f"user_{uuid.uuid4().hex[:12]}"
+                await db.users.insert_one({
+                    "user_id": uid, "email": "", "name": "", "war_name": broker, "phone": "",
+                    "creci": "", "picture": "", "role": "corretor", "active": True, "token_version": 0,
+                    "manual": True, "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+                corr = {"user_id": uid, "war_name": broker}
+                new_brokers += 1
+            owner_id = corr["user_id"]
+            owner_name = corr.get("war_name") or corr.get("name") or broker
+        rate = parse_brl(d.get("commission_rate"))
+        cval = parse_brl(d.get("commission_value"))
+        if not cval and rate:
+            cval = round(sv * rate / 100, 2)
+        n = int(parse_brl(d.get("num_parcelas")) or 0)
+        sd = parse_date(d.get("sale_date"))
+        parcelado = n > 1
+        installments = []
+        if parcelado and cval:
+            per = round(cval / n, 2)
+            acc = 0.0
+            for i in range(n):
+                val = per if i < n - 1 else round(cval - acc, 2)
+                acc += per
+                installments.append({"number": i + 1, "due_date": _add_months(sd, i + 1),
+                                     "value": val, "received": False, "received_date": None})
+        bc = round(cval * 0.6, 2)
+        sale = Sale(
+            property_name=prop, quadra=_clean(d.get("quadra")), lote=_clean(d.get("lote")),
+            client_name=_clean(d.get("client_name")), client_phone=_clean(d.get("client_phone")),
+            client_email=_clean(d.get("client_email")), broker_name=broker or owner_name,
+            brokers=[{"name": broker or owner_name, "split_pct": 100.0, "owner_id": owner_id}],
+            sale_date=sd, sale_value=sv, commission_rate=rate, commission_value=cval,
+            broker_split=60.0, broker_commission=bc, agency_commission=round(cval - bc, 2),
+            parcelado=parcelado, installments=installments, user_id=user["user_id"],
+            owner_id=owner_id, owner_name=owner_name, broker_ids=[owner_id],
+        )
+        await db.sales.insert_one(sale.model_dump())
+        created += 1
+    return {"imported": created, "new_corretores": new_brokers, "new_loteamentos": new_lots}
+
+
 # ---------------- Export (Excel / PDF) ----------------
 MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
             "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
