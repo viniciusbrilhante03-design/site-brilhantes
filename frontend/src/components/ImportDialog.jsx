@@ -133,7 +133,7 @@ export default function ImportDialog({ open, onOpenChange, onImported }) {
                     </>
                   )}
                 </button>
-                <input ref={aiInputRef} data-testid="import-ai-file-input" type="file" accept={ACCEPT} capture="environment"
+                <input ref={aiInputRef} data-testid="import-ai-file-input" type="file" accept={ACCEPT}
                   className="hidden" onChange={(e) => setAiFile(e.target.files?.[0] || null)} />
                 <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
                   A IA extrai as vendas, reconhece corretor/loteamento/cliente/valores/parcelas, marca possíveis

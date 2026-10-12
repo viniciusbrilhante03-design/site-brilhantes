@@ -242,7 +242,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
               <strong className="text-foreground">Preencher com foto (IA)</strong> — envie uma foto ou arquivo do contrato/reserva e a IA preenche loteamento, cliente, valores, quadra e lote.
             </div>
             <input ref={aiRef} data-testid="sale-ai-file-input" type="file"
-              accept=".png,.jpg,.jpeg,.webp,.heic,.pdf,.xlsx,.xls,.csv" capture="environment"
+              accept=".png,.jpg,.jpeg,.webp,.heic,.pdf,.xlsx,.xls,.csv"
               className="hidden" onChange={(e) => handleAiFill(e.target.files?.[0])} />
             <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={aiLoading}
               data-testid="sale-ai-fill-button" onClick={() => aiRef.current?.click()}>

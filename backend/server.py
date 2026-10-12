@@ -1090,9 +1090,7 @@ async def list_goals(month: Optional[int] = None, year: Optional[int] = None,
                      user: dict = Depends(get_current_user)):
     yr = year or datetime.now(timezone.utc).year
     goals = await db.goals.find({"year": yr}, {"_id": 0}).to_list(500)
-    if month is None:
-        goals = [g for g in goals if g.get("month") is None]
-    else:
+    if month is not None:
         goals = [g for g in goals if g.get("month") in (None, month)]
     if user.get("role") == "corretor":
         uid = user["user_id"]
