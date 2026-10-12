@@ -1,0 +1,22 @@
+{
+  "summary": "Verified BUG 1 (METAS visibility) and BUG 2 (capture attr removed) fixes. All 9 backend pytest cases pass. Frontend E2E: created monthly goal appeared in both Metas dialog list AND dashboard GoalsCard row (Ano inteiro default). Delete flow via AlertDialog works. File inputs sale-ai-file-input and import-ai-file-input have no 'capture' attribute and accept images+pdf+xlsx+csv. Backend /api/sales/extract-one responsive. End state: 20 sales, 0 goals (clean).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_goals_bug.py",
+    "/app/test_reports/pytest/goals_bug.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "list_goals correctly keeps annual goals visible when month filter is applied (g.month in (None, month))",
+    "GoalsDialog uses AlertDialog for delete confirmation — tests must click 'Remover' button (not window.confirm)"
+  ],
+  "updated_files": ["/app/backend/tests/test_goals_bug.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Master Bearer qa_session_vinicius_001 (also valid as cookie session_token)",
+  "seed_data_creation": "No persistent seed data; all goals created during tests were deleted.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Both bug fixes verified working. Goals API returns annual+monthly when no month param (bug 1 fixed). File inputs have no capture attr (bug 2 fixed). Test file /app/backend/tests/test_goals_bug.py reusable for regression. Env year is 2026, dashboard defaults to 'Ano inteiro'. Cleanup responsibility respected (0 goals end state).",
+  "rca of the issue": "Bug 1 root cause: previous list_goals filtered goals by exact month equality even when month param was None, hiding monthly goals from the dashboard default view. Fix (confirmed): only apply month filter when month is not None, allowing annual (month=None) + monthly to coexist. Bug 2 root cause: capture='environment' attribute on file inputs forced mobile camera. Fix (confirmed): attribute removed; accept list expanded."
+}

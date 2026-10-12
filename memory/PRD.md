@@ -153,6 +153,13 @@ entrou e o que falta entrar. Controle datado.
   preenche os campos do formulário automaticamente (não sobrescreve campo já digitado). Corretor: não altera o corretor travado.
 - Validado via curl (foto de contrato → todos os campos extraídos; comissão calculada do %) e browser (upload no form → campos preenchidos).
 
+### Iteração 14 (2026-06 fork) — Correções: metas invisíveis + upload travado na câmera ✅
+- **BUG metas**: metas eram criadas mas não apareciam. Causa: GET /api/goals sem `month` retornava só metas anuais
+  (month=null), escondendo metas mensais — e o dashboard usa "Ano inteiro" (sem month) e o diálogo de gestão consulta por ano.
+  Fix: quando `month` é None, retorna TODAS as metas do ano (anuais + mensais). Verificado (iteration_8.json, 9/9 backend).
+- **BUG upload (celular)**: inputs de foto (SaleFormDialog e ImportDialog) tinham capture="environment", forçando só a câmera
+  no celular. Removido — agora o sistema oferece galeria/arquivos/PDF/câmera. Accept mantém imagens + pdf/xlsx/csv.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
