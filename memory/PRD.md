@@ -146,6 +146,13 @@ entrou e o que falta entrar. Controle datado.
   O confirm envia as linhas já corrigidas; novos loteamentos/corretores são auto-cadastrados.
 - Validado via curl (foto PNG → 2 vendas extraídas) e browser (editar corretor/loteamento → badges atualizam). Dados limpos (20 vendas).
 
+### Iteração 13 (2026-06 fork) — "Preencher com foto (IA)" no formulário de venda ✅
+- POST /api/sales/extract-one (gestor e corretor): aceita foto/PDF/planilha → Gemini extrai UMA venda → retorna
+  campos normalizados (loteamento, quadra, lote, cliente/telefone/email, corretor, data, valor, comissão, parcelas).
+- SaleFormDialog: banner "Preencher com foto (IA)" com upload (capture="environment" abre câmera no celular);
+  preenche os campos do formulário automaticamente (não sobrescreve campo já digitado). Corretor: não altera o corretor travado.
+- Validado via curl (foto de contrato → todos os campos extraídos; comissão calculada do %) e browser (upload no form → campos preenchidos).
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

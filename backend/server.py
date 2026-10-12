@@ -1525,6 +1525,40 @@ async def import_ai_confirm(data: AIImportConfirm, user: dict = Depends(require_
     return {"imported": created, "new_corretores": new_brokers, "new_loteamentos": new_lots}
 
 
+def _normalize_extracted(d: dict) -> dict:
+    sv = parse_brl(d.get("sale_value"))
+    rate = parse_brl(d.get("commission_rate"))
+    cval = parse_brl(d.get("commission_value"))
+    if not cval and rate:
+        cval = round(sv * rate / 100, 2)
+    return {
+        "property_name": _clean(d.get("property_name")), "quadra": _clean(d.get("quadra")),
+        "lote": _clean(d.get("lote")), "client_name": _clean(d.get("client_name")),
+        "client_phone": _clean(d.get("client_phone")), "client_email": _clean(d.get("client_email")),
+        "broker_name": _clean(d.get("broker_name")), "sale_date": parse_date(d.get("sale_date")),
+        "sale_value": sv, "commission_rate": rate, "commission_value": cval,
+        "num_parcelas": int(parse_brl(d.get("num_parcelas")) or 0),
+    }
+
+
+@api_router.post("/sales/extract-one")
+async def extract_one(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    content = await file.read()
+    fname = (file.filename or "").lower()
+    if fname.endswith(IMAGE_EXTS):
+        rows = await _ai_extract_sales_from_image(content)
+    else:
+        text = _extract_text_for_ai(content, fname)
+        if not text.strip():
+            raise HTTPException(status_code=422, detail="Não foi possível ler o arquivo.")
+        if len(text) > 60000:
+            text = text[:60000]
+        rows = await _ai_extract_sales(text)
+    if not rows:
+        raise HTTPException(status_code=422, detail="Não consegui extrair dados do arquivo. Tente uma foto mais nítida.")
+    return {"extracted": _normalize_extracted(rows[0])}
+
+
 # ---------------- Export (Excel / PDF) ----------------
 MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
             "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]

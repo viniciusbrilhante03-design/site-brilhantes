@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { brl } from "@/lib/format";
-import { Plus, Trash2, Users } from "lucide-react";
+import api from "@/lib/api";
+import { toast } from "sonner";
+import { Plus, Trash2, Users, Sparkles, Loader2 } from "lucide-react";
 
 const empty = {
   property_name: "",
@@ -47,6 +49,8 @@ function initialBrokers(initial, lockBroker, lockBrokerName) {
 export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, brokers, loteamentos, clients, lockBroker, lockBrokerName }) {
   const [form, setForm] = useState(empty);
   const [numParcelas, setNumParcelas] = useState(1);
+  const [aiLoading, setAiLoading] = useState(false);
+  const aiRef = useRef(null);
 
   useEffect(() => {
     if (open) {
@@ -157,6 +161,37 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
     [form.installments]
   );
 
+  const handleAiFill = async (fileObj) => {
+    if (!fileObj) return;
+    setAiLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", fileObj);
+      const res = await api.post("/sales/extract-one", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const d = res.data.extracted || {};
+      setForm((fm) => ({
+        ...fm,
+        property_name: d.property_name || fm.property_name,
+        quadra: d.quadra || fm.quadra,
+        lote: d.lote || fm.lote,
+        client_name: d.client_name || fm.client_name,
+        client_phone: d.client_phone || fm.client_phone,
+        client_email: d.client_email || fm.client_email,
+        sale_date: d.sale_date || fm.sale_date,
+        sale_value: d.sale_value ? String(d.sale_value) : fm.sale_value,
+        commission_rate: d.commission_rate ? String(d.commission_rate) : fm.commission_rate,
+        commission_value: d.commission_value ? String(d.commission_value) : fm.commission_value,
+        brokers: (!lockBroker && d.broker_name) ? [{ name: d.broker_name, split_pct: 100 }] : fm.brokers,
+      }));
+      toast.success("Dados preenchidos pela IA. Confira antes de salvar.");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Não consegui ler o arquivo.");
+    } finally {
+      setAiLoading(false);
+      if (aiRef.current) aiRef.current.value = "";
+    }
+  };
+
   const handleSubmit = () => {
     const cleanBrokers = partners
       .filter((b) => (b.name || "").trim())
@@ -200,6 +235,22 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
         </DialogHeader>
 
         <div className="space-y-5 py-2">
+          {/* Preencher com IA (foto/arquivo) */}
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 flex items-center gap-3">
+            <Sparkles className="h-5 w-5 text-primary shrink-0" />
+            <div className="flex-1 text-xs text-muted-foreground">
+              <strong className="text-foreground">Preencher com foto (IA)</strong> — envie uma foto ou arquivo do contrato/reserva e a IA preenche loteamento, cliente, valores, quadra e lote.
+            </div>
+            <input ref={aiRef} data-testid="sale-ai-file-input" type="file"
+              accept=".png,.jpg,.jpeg,.webp,.heic,.pdf,.xlsx,.xls,.csv" capture="environment"
+              className="hidden" onChange={(e) => handleAiFill(e.target.files?.[0])} />
+            <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={aiLoading}
+              data-testid="sale-ai-fill-button" onClick={() => aiRef.current?.click()}>
+              {aiLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+              {aiLoading ? "Lendo..." : "Preencher com foto"}
+            </Button>
+          </div>
+
           {/* Loteamento */}
           <div className="space-y-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Loteamento</div>
