@@ -69,6 +69,24 @@ entrou e o que falta entrar. Controle datado.
 - Equipe (master): lista de corretores + ativar/inativar + link de cadastro + abas Loteamentos/Histórico.
 - Testes: 52/52 backend + fluxos frontend 100%.
 
+### Iteração 5 (2026-10-12) — Financeiro por COMISSÃO (item 1/19)
+- **Correção crítica:** removido o "Falta Entrar" baseado no saldo do lote. O controle agora é
+  da COMISSÃO da imobiliária/corretor. Venda à vista: `commission_received`; comissão parcelada:
+  parcelas geradas a partir do `commission_value` (não do valor do lote), com baixa e vencidas.
+- /api/stats novo: comissao_recebida, comissao_a_receber, comissao_vencida (due_date < hoje BRT), ticket_medio.
+- Dashboard (master e corretor) com cards de comissão (VGV, Gerada, Recebida, A Receber, Vencida, Ticket Médio).
+- InstallmentsDialog vira "Comissão a receber" (Recebida/A receber/Vencida). Parcelas demo legadas (lote) zeradas.
+- Testes: 5/5 backend + fluxos frontend 100%.
+
+## Próximos (ordem de prioridade do cliente — NÃO implementados ainda)
+1. Múltiplos corretores/parceria por venda (split %, soma 100%) refletindo comissão/ranking/VGV.
+2. Cadastro+histórico de clientes (autocomplete, compras por cliente).
+3. Metas (coletiva e individual) + módulo Comissões dedicado com projeção.
+4. Notificações (nova venda, ranking, incentivo de meta).
+5. Ranking por período (semana/mês/ano/custom) e por comissão; grupos/duplas.
+6. Filtros de vendas; status da venda (reserva/efetivada/cancelada/distrato); duplicidade; auditoria.
+7. Importação inteligente (IA) de relatórios das construtoras com prévia.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 4 — Commission-based financial tracking end-to-end validation. Backend: 5/5 new pytest in test_commission_stats.py pass (stats shape with new keys, ticket_medio = total_vendido/qtd_vendas, a-vista commission_received=true → increments only comissao_recebida, a-vista commission_received=false → increments only comissao_a_receber, parcelado with past-due installment → vencida contains only the overdue one, PATCH /sales/{id}/installments/{n} moves the amount from a_receber to recebida AND removes it from vencida). Baseline from the public /api/stats?year=2026 confirms the user’s note: comissao_recebida=R$0,00, comissao_a_receber=R$608.970,00=comissao_total. Frontend master dashboard: all 8 KPIs render with the correct testids and labels (kpi-total-vendas-mes 'VGV (Total Vendido)', kpi-comissao-total 'Comissão Gerada', kpi-comissao-recebida, kpi-comissao-a-receber, kpi-comissao-vencida, kpi-comissao-corretor, kpi-ticket-medio, kpi-qtd-vendas); no 'Falta Entrar' / 'Falta entrar' / 'Já Recebi' strings anywhere on the page. SaleFormDialog has both switches (sale-form-parcelado-switch and, when parcelado is OFF, sale-form-commission-received-switch); turning parcelado ON hides the received toggle; typing commission_value=1500 + num=3 + 'Gerar parcelas' creates 3 rows of exactly R$500 (confirmed via DOM read) — i.e. derived from commission_value, NOT from sale_value. InstallmentsDialog (btn-installments-{id}) opens with title 'Comissão a receber' and three summary chips Recebida / A receber / Vencida visible. Corretor regression: login carlos.teste@brilhantes.com / 12345678900 succeeds; CorretorDashboard shows exactly 6 KPIs including 'Comissão Recebida' R$0,00 and 'Comissão a Receber' R$35.200,00; strings 'Já Recebi' and 'Falta Entrar' are absent.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_commission_stats.py",
+    "/app/test_reports/pytest/pytest_iter4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py still 1283 lines — split into routers (auth/sales/loteamentos/corretores/stats) for maintainability (recurring from iter 3).",
+    "Stats endpoint returns both the new keys (comissao_recebida, comissao_a_receber) and legacy aliases (ja_entrou, falta_entrar) with the SAME commission-based values; this is backwards-compatible but could mislead a future developer into thinking lot-balance is still exposed — add a comment or deprecate the legacy keys.",
+    "_comm_overdue reads today() in UTC but due_date is a plain ISO date (local). For users in BRT (-03:00) between 21:00–23:59 local, 'today' in UTC is already tomorrow which can prematurely flag an installment as overdue (or vice-versa). Prefer comparing against a Brazil-timezone date.",
+    "There is still a duplicate data-testid='sale-form-broker-select' comment carried from iter 3; the component now uses distinct sale-form-broker-locked + sale-form-broker-select — confirmed OK, flag resolved."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_commission_stats.py (new, 5 tests, xdist_group pinned to avoid cross-worker interference on global stats)"
+  ],
+  "success_rate": { "backend": "100% (5/5 new; existing 52 untouched)", "frontend": "100% of flows under test" },
+  "test_credentials": "Master Bearer/cookie session_token=qa_session_vinicius_001; Corretor carlos.teste@brilhantes.com / 12345678900.",
+  "seed_data_creation": "Transient TEST_Cliente sales created by each test are deleted by autouse cleanup fixture (DELETE /api/sales/{id}).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_commission_stats.py -n 1 -v` (uses REACT_APP_BACKEND_URL from frontend/.env via conftest). The commission tests are pinned to xdist_group='commission_stats' so they share one worker; running with the full suite -n auto is safe. For the frontend, inject session_token cookie value qa_session_vinicius_001 for master; carlos.teste@brilhantes.com / 12345678900 for corretor. The sale form generates installments from commission_value (sale-form-commission-value), NOT sale_value — do not test with only sale_value filled.",
+  "rca of the issue": "No bugs reproduced in this iteration. The requested behaviour (financial control based on COMMISSION, not on lot balance) is implemented correctly in backend helpers _comm_received/_comm_pending/_comm_overdue and surfaced in the frontend KpiGrid / InstallmentsDialog / SaleFormDialog / CorretorDashboard. Initial test failures were pytest-xdist cross-worker interference on the shared /api/stats aggregate; fixed by pinning the module to a single xdist group."
+}

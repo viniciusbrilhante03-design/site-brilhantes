@@ -647,7 +647,7 @@ def _comm_pending(s: dict) -> float:
 
 
 def _comm_overdue(s: dict) -> float:
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = (datetime.now(timezone.utc) - timedelta(hours=3)).date().isoformat()
     return sum((i.get("value", 0) or 0) for i in s.get("installments", [])
                if not i.get("received") and (i.get("due_date") or "") < today)
 
