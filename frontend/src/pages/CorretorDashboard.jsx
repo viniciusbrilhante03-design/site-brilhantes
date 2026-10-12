@@ -68,10 +68,10 @@ export default function CorretorDashboard() {
   const kpis = [
     { label: "VGV Geral (imobiliária)", value: brl(s.vgv_geral), icon: Globe, tone: "gold" },
     { label: "Minhas Vendas", value: (s.qtd_vendas ?? 0).toLocaleString("pt-BR"), icon: Hash, tone: "primary" },
-    { label: "Meu Volume", value: brl(s.total_vendido), icon: TrendingUp, tone: "primary" },
+    { label: "Meu Volume (VGV)", value: brl(s.total_vendido), icon: TrendingUp, tone: "primary" },
     { label: "Minha Comissão", value: brl(s.comissao_corretor), icon: UserRound, tone: "emerald" },
-    { label: "Já Recebi", value: brl(s.ja_entrou), icon: Wallet, tone: "emerald" },
-    { label: "A Receber", value: brl(s.falta_entrar), icon: Clock, tone: "amber" },
+    { label: "Comissão Recebida", value: brl(s.comissao_recebida), icon: Wallet, tone: "emerald" },
+    { label: "Comissão a Receber", value: brl(s.comissao_a_receber), icon: Clock, tone: "amber" },
   ];
   const toneMap = {
     primary: "text-primary bg-primary/10", gold: "text-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.12)]",

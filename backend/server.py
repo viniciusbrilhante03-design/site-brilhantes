@@ -135,6 +135,7 @@ class SaleCreate(BaseModel):
     broker_split: float = 60.0  # % que vai para o corretor
     broker_commission: float = 0.0
     agency_commission: float = 0.0
+    commission_received: bool = False
     entrada: float = 0.0
     parcelado: bool = False
     installments: List[Installment] = []
@@ -632,6 +633,25 @@ def _agency_comm(sale: dict) -> float:
     return (sale.get("commission_value", 0) or 0) - _broker_comm(sale)
 
 
+def _comm_received(s: dict) -> float:
+    insts = s.get("installments", [])
+    cv = s.get("commission_value", 0) or 0
+    if insts:
+        return sum(i.get("value", 0) or 0 for i in insts if i.get("received"))
+    return cv if s.get("commission_received") else 0.0
+
+
+def _comm_pending(s: dict) -> float:
+    cv = s.get("commission_value", 0) or 0
+    return max(cv - _comm_received(s), 0)
+
+
+def _comm_overdue(s: dict) -> float:
+    today = datetime.now(timezone.utc).date().isoformat()
+    return sum((i.get("value", 0) or 0) for i in s.get("installments", [])
+               if not i.get("received") and (i.get("due_date") or "") < today)
+
+
 @api_router.get("/stats")
 async def stats(month: Optional[int] = None, year: Optional[int] = None,
                 user: dict = Depends(get_current_user)):
@@ -641,8 +661,11 @@ async def stats(month: Optional[int] = None, year: Optional[int] = None,
     comissao_corretor = sum(_broker_comm(s) for s in sales)
     comissao_imobiliaria = sum(_agency_comm(s) for s in sales)
     entrada_total = sum(s.get("entrada", 0) or 0 for s in sales)
-    ja_entrou = sum(_received_amount(s) for s in sales)
-    falta_entrar = sum(_pending_amount(s) for s in sales)
+    ja_entrou = sum(_comm_received(s) for s in sales)
+    falta_entrar = sum(_comm_pending(s) for s in sales)
+    comissao_vencida = sum(_comm_overdue(s) for s in sales)
+    qtd = len(sales)
+    ticket_medio = (total_vendido / qtd) if qtd else 0
     company = await _company_sales(month, year)
     vgv_geral = sum(s.get("sale_value", 0) or 0 for s in company)
     return {
@@ -651,9 +674,13 @@ async def stats(month: Optional[int] = None, year: Optional[int] = None,
         "comissao_corretor": comissao_corretor,
         "comissao_imobiliaria": comissao_imobiliaria,
         "entrada_total": entrada_total,
+        "comissao_recebida": ja_entrou,
+        "comissao_a_receber": falta_entrar,
+        "comissao_vencida": comissao_vencida,
+        "ticket_medio": ticket_medio,
         "ja_entrou": ja_entrou,
         "falta_entrar": falta_entrar,
-        "qtd_vendas": len(sales),
+        "qtd_vendas": qtd,
         "vgv_geral": vgv_geral,
         "qtd_geral": len(company),
     }

@@ -6,13 +6,13 @@ const fmtInt = (v) => (Number(v) || 0).toLocaleString("pt-BR");
 
 export default function KpiGrid({ stats, loading }) {
   const cards = [
-    { label: "Total Vendido", value: brl(stats?.total_vendido), icon: TrendingUp, tone: "primary", testid: "kpi-total-vendas-mes" },
-    { label: "Comissão Total", value: brl(stats?.comissao_total), icon: Banknote, tone: "gold", testid: "kpi-comissao-total" },
+    { label: "VGV (Total Vendido)", value: brl(stats?.total_vendido), icon: TrendingUp, tone: "primary", testid: "kpi-total-vendas-mes" },
+    { label: "Comissão Gerada", value: brl(stats?.comissao_total), icon: Banknote, tone: "gold", testid: "kpi-comissao-total" },
+    { label: "Comissão Recebida", value: brl(stats?.comissao_recebida), icon: Wallet, tone: "emerald", testid: "kpi-comissao-recebida" },
+    { label: "Comissão a Receber", value: brl(stats?.comissao_a_receber), icon: ArrowDownToLine, tone: "amber", testid: "kpi-comissao-a-receber" },
+    { label: "Comissão Vencida", value: brl(stats?.comissao_vencida), icon: Clock, tone: "rose", testid: "kpi-comissao-vencida" },
     { label: "Comissão Corretor", value: brl(stats?.comissao_corretor), icon: UserRound, tone: "emerald", testid: "kpi-comissao-corretor" },
-    { label: "Comissão Imobiliária", value: brl(stats?.comissao_imobiliaria), icon: Building2, tone: "primary", testid: "kpi-comissao-imobiliaria" },
-    { label: "Entradas", value: brl(stats?.entrada_total), icon: ArrowDownToLine, tone: "emerald", testid: "kpi-entrada-total" },
-    { label: "Já Entrou", value: brl(stats?.ja_entrou), icon: Wallet, tone: "emerald", testid: "kpi-ja-entrou" },
-    { label: "Falta Entrar", value: brl(stats?.falta_entrar), icon: Clock, tone: "amber", testid: "kpi-falta-entrar" },
+    { label: "Ticket Médio", value: brl(stats?.ticket_medio), icon: Building2, tone: "primary", testid: "kpi-ticket-medio" },
     { label: "Qtd. de Vendas", value: fmtInt(stats?.qtd_vendas), icon: Hash, tone: "primary", testid: "kpi-qtd-vendas" },
   ];
 
@@ -21,6 +21,7 @@ export default function KpiGrid({ stats, loading }) {
     gold: "text-[hsl(var(--gold))] bg-[hsl(var(--gold)/0.12)]",
     emerald: "text-[hsl(var(--emerald))] bg-[hsl(var(--emerald)/0.12)]",
     amber: "text-[hsl(var(--amber))] bg-[hsl(var(--amber)/0.12)]",
+    rose: "text-[hsl(var(--rose))] bg-[hsl(var(--rose)/0.12)]",
   };
 
   return (

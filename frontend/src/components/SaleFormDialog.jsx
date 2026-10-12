@@ -22,6 +22,7 @@ const empty = {
   commission_rate: "",
   commission_value: "",
   broker_split: 60,
+  commission_received: false,
   entrada: "",
   parcelado: false,
   installments: [],
@@ -76,9 +77,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
 
   const generateInstallments = () => {
     const n = Math.max(1, parseInt(numParcelas) || 1);
-    const sv = parseFloat(form.sale_value) || 0;
-    const ent = parseFloat(form.entrada) || 0;
-    const remaining = Math.max(sv - ent, 0);
+    const remaining = parseFloat(form.commission_value) || 0;
     const per = +(remaining / n).toFixed(2);
     const list = [];
     let acc = 0;
@@ -130,6 +129,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
       broker_split: parseFloat(form.broker_split) || 0,
       broker_commission: +brokerComm.toFixed(2),
       agency_commission: +agencyComm.toFixed(2),
+      commission_received: form.parcelado ? false : !!form.commission_received,
       entrada: parseFloat(form.entrada) || 0,
       parcelado: form.parcelado,
       installments: form.parcelado ? form.installments : [],
@@ -275,10 +275,18 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
                 <div className="flex items-center gap-3">
                   <Switch data-testid="sale-form-parcelado-switch" checked={form.parcelado}
                     onCheckedChange={(v) => set("parcelado", v)} />
-                  <Label className="cursor-pointer">Venda parcelada (a receber)</Label>
+                  <Label className="cursor-pointer">Comissão parcelada (a receber)</Label>
                 </div>
               </div>
             </div>
+
+            {!form.parcelado && (
+              <div className="flex items-center gap-3 rounded-lg border border-border/60 p-3 bg-muted/20">
+                <Switch data-testid="sale-form-commission-received-switch" checked={form.commission_received}
+                  onCheckedChange={(v) => set("commission_received", v)} />
+                <Label className="cursor-pointer">Comissão já recebida (à vista)</Label>
+              </div>
+            )}
           </div>
 
           {form.parcelado && (
