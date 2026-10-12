@@ -1,0 +1,24 @@
+{
+  "summary": "Verified Duplicate Sale regression (create vs update), AI Gemini 2.5 Flash, and client-history hint. Backend: 8/8 pytest passed. Frontend: duplicate opens Nova venda with pre-filled client/loteamento/corretor and empty quadra/lote; client-history hint shows for existing client and hides for new names. End state: 20 sales, 0 goals.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_duplicate_sale.py",
+    "/app/test_reports/pytest/duplicate_sale.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Dashboard.jsx & CorretorDashboard.jsx correctly use editing?.id in mutationFn so duplicate (id=undefined) now POSTs and normal edit still PUTs.",
+    "SaleFormDialog title keys on initial?.id ('Nova venda' when duplicating) — verified in UI.",
+    "sale-client-history-hint renders only when exact (case-insensitive) client match exists — verified live.",
+    "AI extractors now use with_model('gemini','gemini-2.5-flash') for both text and image paths; /api/sales/extract-one and /api/sales/import-ai/preview both working."
+  ],
+  "updated_files": ["/app/backend/tests/test_duplicate_sale.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Master cookie session_token=qa_session_vinicius_001 (also Bearer). Corretor: carlos.teste@brilhantes.com / 12345678900 (login via POST /api/auth/login sets httpOnly access_token cookie).",
+  "seed_data_creation": "None — all test-created sales were deleted. End state: 20 sales, 0 goals.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite /app/backend/tests/test_duplicate_sale.py covers: duplicate creates new sale (master + corretor), edit updates in place, create+delete flow, AI extract-one with CSV, AI import-ai/preview with CSV, final count assertion (20 sales / 0 goals). Corretor auth returns no bearer token in body — uses httpOnly access_token cookie which requests.Session captures automatically. extract-one and import-ai/preview only accept .xlsx/.csv/.pdf/image (not .txt).",
+  "rca of the issue": "N/A — no bugs found. Duplicate flow confirmed: Dashboard sets editing={...s, id:undefined, quadra:'', lote:'', installments:[]}; createMut keys on editing?.id so POST /api/sales is called (new id), original sale untouched. Normal Edit sets editing={...s} with id present, so PUT /api/sales/{id} is called."
+}

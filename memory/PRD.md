@@ -160,6 +160,14 @@ entrou e o que falta entrar. Controle datado.
 - **BUG upload (celular)**: inputs de foto (SaleFormDialog e ImportDialog) tinham capture="environment", forçando só a câmera
   no celular. Removido — agora o sistema oferece galeria/arquivos/PDF/câmera. Accept mantém imagens + pdf/xlsx/csv.
 
+### Iteração 15 (2026-06 fork) — IA mais barata + Duplicar venda + dica de histórico ✅
+- **Modelo IA trocado** para **gemini-2.5-flash** (bem mais barato) em _ai_extract_sales e _ai_extract_sales_from_image.
+- **Duplicar venda**: botão Copy em cada linha (btn-duplicate-<id>) abre "Nova venda" pré-preenchida com cliente +
+  loteamento + corretor + comissão, zerando Quadra/Lote e parcelas, para cadastrar um 2º lote do mesmo cliente como venda NOVA.
+  Lógica de mutação passou a usar editing?.id (duplicar → POST, editar → PUT). Vale para gestor e corretor.
+- **Dica de histórico**: ao digitar um cliente existente no formulário, mostra "Cliente já tem N compra(s) · R$ X em VGV".
+- Verificado (iteration_9.json, 8/8 backend + frontend; regressão criar/editar/duplicar OK). Dados limpos (20 vendas).
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
