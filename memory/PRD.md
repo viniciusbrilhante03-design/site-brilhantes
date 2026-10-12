@@ -138,6 +138,14 @@ entrou e o que falta entrar. Controle datado.
 - UI: ImportDialog com abas "Com IA" (upload → prévia com seleção/duplicatas → confirmar) e "Planilha".
 - Validado via curl (CSV bagunçado com ; e TOTAL ignorado; dedup 3/3 na re-análise) e browser (upload → prévia). Dados limpos (20 vendas).
 
+### Iteração 12 (2026-06 fork) — Prévia editável + Importar por foto ✅
+- **Importar por foto**: preview aceita imagens (.png/.jpg/.webp/.heic...); backend envia a foto ao Gemini via ImageContent
+  (multimodal) e extrai as vendas igual ao PDF. Input com capture="environment" para abrir a câmera no celular.
+- **Prévia editável**: na tela de prévia da IA, todos os campos são editáveis (Loteamento com datalist, Qd/Lt, Corretor
+  com datalist, Cliente, Data, Valor). Badges "Novo loteamento"/"Novo corretor" recalculam ao vivo conforme a edição.
+  O confirm envia as linhas já corrigidas; novos loteamentos/corretores são auto-cadastrados.
+- Validado via curl (foto PNG → 2 vendas extraídas) e browser (editar corretor/loteamento → badges atualizam). Dados limpos (20 vendas).
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

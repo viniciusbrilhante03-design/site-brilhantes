@@ -1370,6 +1370,17 @@ def _parse_ai_json(raw: str):
     return data if isinstance(data, list) else []
 
 
+AI_IMPORT_PROMPT = (
+    "Extraia TODAS as vendas e responda APENAS com um array JSON "
+    "(sem texto extra, sem markdown). Cada item deve ter os campos: property_name (loteamento), "
+    "quadra, lote, client_name, client_phone, client_email, broker_name (corretor), "
+    "sale_date (converta qualquer formato para YYYY-MM-DD), sale_value (número puro, sem R$), "
+    "commission_rate (número ou null), commission_value (número ou null), num_parcelas (inteiro ou null). "
+    "Use null quando o dado não existir. Ignore linhas de cabeçalho/total/rodapé."
+)
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif", ".gif", ".bmp")
+
+
 async def _ai_extract_sales(text: str):
     from emergentintegrations.llm.chat import LlmChat, UserMessage
     key = os.environ.get("EMERGENT_LLM_KEY")
@@ -1377,15 +1388,23 @@ async def _ai_extract_sales(text: str):
         raise HTTPException(status_code=500, detail="Chave de IA não configurada.")
     chat = LlmChat(api_key=key, session_id=f"import_{uuid.uuid4().hex[:8]}",
                    system_message=AI_IMPORT_SYSTEM).with_model("gemini", "gemini-3.1-pro-preview")
-    prompt = (
-        "Extraia TODAS as vendas do relatório abaixo e responda APENAS com um array JSON "
-        "(sem texto extra, sem markdown). Cada item deve ter os campos: property_name (loteamento), "
-        "quadra, lote, client_name, client_phone, client_email, broker_name (corretor), "
-        "sale_date (converta qualquer formato para YYYY-MM-DD), sale_value (número puro, sem R$), "
-        "commission_rate (número ou null), commission_value (número ou null), num_parcelas (inteiro ou null). "
-        "Use null quando o dado não existir. Ignore linhas de cabeçalho/total/rodapé.\n\nRELATÓRIO:\n" + text
-    )
-    resp = await chat.send_message(UserMessage(text=prompt))
+    resp = await chat.send_message(UserMessage(text=AI_IMPORT_PROMPT + "\n\nRELATÓRIO:\n" + text))
+    raw = resp if isinstance(resp, str) else getattr(resp, "content", str(resp))
+    return _parse_ai_json(raw)
+
+
+async def _ai_extract_sales_from_image(content: bytes):
+    import base64
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+    key = os.environ.get("EMERGENT_LLM_KEY")
+    if not key:
+        raise HTTPException(status_code=500, detail="Chave de IA não configurada.")
+    b64 = base64.b64encode(content).decode()
+    chat = LlmChat(api_key=key, session_id=f"import_img_{uuid.uuid4().hex[:8]}",
+                   system_message=AI_IMPORT_SYSTEM).with_model("gemini", "gemini-3.1-pro-preview")
+    msg = UserMessage(text=AI_IMPORT_PROMPT + "\n\nO relatório está na imagem (foto) anexada. Leia a tabela da foto.",
+                      file_contents=[ImageContent(image_base64=b64)])
+    resp = await chat.send_message(msg)
     raw = resp if isinstance(resp, str) else getattr(resp, "content", str(resp))
     return _parse_ai_json(raw)
 
@@ -1402,12 +1421,16 @@ def _dup_key(d: dict) -> str:
 @api_router.post("/sales/import-ai/preview")
 async def import_ai_preview(file: UploadFile = File(...), user: dict = Depends(require_master)):
     content = await file.read()
-    text = _extract_text_for_ai(content, file.filename or "")
-    if not text.strip():
-        raise HTTPException(status_code=422, detail="Não foi possível ler conteúdo do arquivo.")
-    if len(text) > 60000:
-        text = text[:60000]
-    rows = await _ai_extract_sales(text)
+    fname = (file.filename or "").lower()
+    if fname.endswith(IMAGE_EXTS):
+        rows = await _ai_extract_sales_from_image(content)
+    else:
+        text = _extract_text_for_ai(content, fname)
+        if not text.strip():
+            raise HTTPException(status_code=422, detail="Não foi possível ler conteúdo do arquivo.")
+        if len(text) > 60000:
+            text = text[:60000]
+        rows = await _ai_extract_sales(text)
     existing = await db.sales.find({}, {"_id": 0}).to_list(5000)
     existing_keys = {_dup_key(s): s.get("id") for s in existing}
     lot_set = {(l.get("name") or "").strip().lower() for l in await db.loteamentos.find({}, {"_id": 0}).to_list(3000)}
