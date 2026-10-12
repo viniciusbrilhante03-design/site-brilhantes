@@ -1385,7 +1385,7 @@ async def _ai_extract_sales(text: str):
     if not key:
         raise HTTPException(status_code=500, detail="Chave de IA não configurada.")
     chat = LlmChat(api_key=key, session_id=f"import_{uuid.uuid4().hex[:8]}",
-                   system_message=AI_IMPORT_SYSTEM).with_model("gemini", "gemini-3.1-pro-preview")
+                   system_message=AI_IMPORT_SYSTEM).with_model("gemini", "gemini-2.5-flash")
     resp = await chat.send_message(UserMessage(text=AI_IMPORT_PROMPT + "\n\nRELATÓRIO:\n" + text))
     raw = resp if isinstance(resp, str) else getattr(resp, "content", str(resp))
     return _parse_ai_json(raw)
@@ -1399,7 +1399,7 @@ async def _ai_extract_sales_from_image(content: bytes):
         raise HTTPException(status_code=500, detail="Chave de IA não configurada.")
     b64 = base64.b64encode(content).decode()
     chat = LlmChat(api_key=key, session_id=f"import_img_{uuid.uuid4().hex[:8]}",
-                   system_message=AI_IMPORT_SYSTEM).with_model("gemini", "gemini-3.1-pro-preview")
+                   system_message=AI_IMPORT_SYSTEM).with_model("gemini", "gemini-2.5-flash")
     msg = UserMessage(text=AI_IMPORT_PROMPT + "\n\nO relatório está na imagem (foto) anexada. Leia a tabela da foto.",
                       file_contents=[ImageContent(image_base64=b64)])
     resp = await chat.send_message(msg)

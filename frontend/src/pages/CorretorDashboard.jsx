@@ -49,8 +49,8 @@ export default function CorretorDashboard() {
   const invalidateAll = () => ["sales", "stats", "ranking", "clients"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 
   const createMut = useMutation({
-    mutationFn: (payload) => (editing ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload)),
-    onSuccess: () => { invalidateAll(); setFormOpen(false); setEditing(null); toast.success(editing ? "Venda atualizada!" : "Venda cadastrada!"); },
+    mutationFn: (payload) => (editing?.id ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload)),
+    onSuccess: () => { invalidateAll(); setFormOpen(false); setEditing(null); toast.success(editing?.id ? "Venda atualizada!" : "Venda cadastrada!"); },
     onError: () => toast.error("Erro ao salvar venda."),
   });
   const deleteMut = useMutation({ mutationFn: (id) => api.delete(`/sales/${id}`), onSuccess: () => { invalidateAll(); toast.success("Venda movida para o histórico."); } });
@@ -137,6 +137,7 @@ export default function CorretorDashboard() {
               sales={salesQ.data} loading={salesQ.isLoading}
               onAdd={() => { setEditing(null); setFormOpen(true); }}
               onEdit={(x) => { setEditing(x); setFormOpen(true); }}
+              onDuplicate={(x) => { setEditing({ ...x, id: undefined, quadra: "", lote: "", installments: [] }); setFormOpen(true); }}
               onDelete={(id) => deleteMut.mutate(id)}
               onOpenInstallments={(x) => setInstSale(x)}
               onImport={() => toast.info("Importação disponível no painel do gestor.")}

@@ -106,7 +106,7 @@ export default function Dashboard() {
 
   const createMut = useMutation({
     mutationFn: (payload) =>
-      editing ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload),
+      editing?.id ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload),
     onSuccess: () => {
       invalidateAll();
       setFormOpen(false);
@@ -248,6 +248,7 @@ export default function Dashboard() {
           loading={salesQ.isLoading}
           onAdd={() => { setEditing(null); setFormOpen(true); }}
           onEdit={(s) => { setEditing(s); setFormOpen(true); }}
+          onDuplicate={(s) => { setEditing({ ...s, id: undefined, quadra: "", lote: "", installments: [] }); setFormOpen(true); }}
           onDelete={(id) => deleteMut.mutate(id)}
           onOpenInstallments={(s) => setInstSale(s)}
           onImport={() => setImportOpen(true)}

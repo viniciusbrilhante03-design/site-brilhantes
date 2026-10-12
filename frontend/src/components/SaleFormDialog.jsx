@@ -229,7 +229,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="sale-form-dialog">
         <DialogHeader>
           <DialogTitle className="font-heading text-xl">
-            {initial ? "Editar venda" : "Nova venda"}
+            {initial?.id ? "Editar venda" : "Nova venda"}
           </DialogTitle>
           <DialogDescription>Preencha os dados do loteamento e o fluxo a receber.</DialogDescription>
         </DialogHeader>
@@ -351,6 +351,14 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
                 <datalist id="clients-list">
                   {(clients || []).map((c) => <option key={c.name} value={c.name} />)}
                 </datalist>
+                {(() => {
+                  const m = (clients || []).find((c) => c.name.toLowerCase() === (form.client_name || "").trim().toLowerCase());
+                  return m ? (
+                    <p data-testid="sale-client-history-hint" className="text-[11px] text-[hsl(var(--emerald))]">
+                      Cliente já tem {m.qtd} compra(s) · {brl(m.volume)} em VGV
+                    </p>
+                  ) : null;
+                })()}
               </div>
               <div className="space-y-1.5">
                 <Label>Número do cliente</Label>
@@ -484,7 +492,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button data-testid="sale-form-submit-button" onClick={handleSubmit} disabled={!valid}>
-            <Plus className="h-4 w-4 mr-1" /> {initial ? "Salvar alterações" : "Cadastrar venda"}
+            <Plus className="h-4 w-4 mr-1" /> {initial?.id ? "Salvar alterações" : "Cadastrar venda"}
           </Button>
         </DialogFooter>
       </DialogContent>
