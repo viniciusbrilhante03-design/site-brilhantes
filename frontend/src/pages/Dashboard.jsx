@@ -23,6 +23,7 @@ import InstallmentsDialog from "@/components/InstallmentsDialog";
 import ImportDialog from "@/components/ImportDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import TeamDialog from "@/components/TeamDialog";
+import NotificationsBell from "@/components/NotificationsBell";
 import ClientsDialog from "@/components/ClientsDialog";
 import GoalsCard from "@/components/GoalsCard";
 import GoalsDialog from "@/components/GoalsDialog";
@@ -67,6 +68,7 @@ export default function Dashboard() {
   const rankingQ = useQuery({
     queryKey: ["ranking", params],
     queryFn: async () => (await api.get("/ranking", { params })).data,
+    enabled: false,
   });
   const seriesQ = useQuery({
     queryKey: ["series", year],
@@ -183,6 +185,8 @@ export default function Dashboard() {
               {theme.dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
 
+            <NotificationsBell />
+
             <Button data-testid="btn-open-clients" variant="outline" className="h-9 gap-1.5"
               onClick={() => setClientsOpen(true)}>
               <Contact className="h-4 w-4" /><span className="hidden md:inline">Clientes</span>
@@ -234,7 +238,7 @@ export default function Dashboard() {
             <MonthlyChart series={seriesQ.data} activeMonth={month === ALL ? null : month} />
           </div>
           <div className="lg:col-span-1 space-y-6">
-            <RankingCard ranking={rankingQ.data} />
+            <RankingCard />
             <GoalsCard goals={goalsQ.data} onManage={() => setGoalsOpen(true)} />
           </div>
         </div>

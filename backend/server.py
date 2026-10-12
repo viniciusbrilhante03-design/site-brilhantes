@@ -569,6 +569,7 @@ async def create_sale(data: SaleCreate, user: dict = Depends(get_current_user)):
     sale = Sale(**payload, user_id=user["user_id"], owner_id=owner_id,
                 owner_name=owner_name, broker_ids=broker_ids)
     await db.sales.insert_one(sale.model_dump())
+    await _post_sale_notifications(sale.model_dump())
     return sale
 
 
@@ -792,10 +793,33 @@ async def stats(month: Optional[int] = None, year: Optional[int] = None,
     }
 
 
+def _in_range(s: dict, start: Optional[str], end: Optional[str]) -> bool:
+    sd = s.get("sale_date", "") or ""
+    if start and sd < start:
+        return False
+    if end and sd > end:
+        return False
+    return True
+
+
 @api_router.get("/ranking")
 async def ranking(month: Optional[int] = None, year: Optional[int] = None,
+                  start: Optional[str] = None, end: Optional[str] = None,
                   user: dict = Depends(get_current_user)):
-    sales = await _company_sales(month, year)
+    if start or end:
+        docs = await db.sales.find({}, {"_id": 0}).to_list(5000)
+        sales = [s for s in docs if _in_range(s, start, end)]
+    else:
+        sales = await _company_sales(month, year)
+
+    groups = await db.broker_groups.find({}, {"_id": 0}).to_list(500)
+    name_to_group, group_label, group_members = {}, {}, {}
+    for g in groups:
+        group_label[g["id"]] = g.get("name") or "Dupla"
+        group_members[g["id"]] = g.get("members", [])
+        for m in g.get("members", []):
+            name_to_group[(m or "").strip().lower()] = g["id"]
+
     by_broker = {}
     for s in sales:
         brokers = s.get("brokers") or [{
@@ -807,10 +831,14 @@ async def ranking(month: Optional[int] = None, year: Optional[int] = None,
         pool = _broker_pool(s)
         for b in brokers:
             name = (b.get("name") or "—")
+            gid = name_to_group.get(name.strip().lower())
+            key = f"grp:{gid}" if gid else name
+            display = group_label.get(gid) if gid else name
             share = ((b.get("split_pct") or 0) / total) if total else 0
-            bk = by_broker.setdefault(name, {
-                "broker_name": name, "qtd": 0, "volume": 0.0,
+            bk = by_broker.setdefault(key, {
+                "broker_name": display, "qtd": 0, "volume": 0.0,
                 "comissao": 0.0, "comissao_corretor": 0.0, "photo": None,
+                "is_group": bool(gid), "members": group_members.get(gid, []) if gid else [],
             })
             bk["qtd"] += 1
             bk["volume"] += sv * share
@@ -829,8 +857,159 @@ async def ranking(month: Optional[int] = None, year: Optional[int] = None,
             if key and c.get("picture"):
                 photo_map[key.strip().lower()] = c["picture"]
     for entry in by_broker.values():
-        entry["photo"] = photo_map.get(entry["broker_name"].strip().lower())
+        if entry["is_group"]:
+            for m in entry["members"]:
+                p = photo_map.get((m or "").strip().lower())
+                if p:
+                    entry["photo"] = p
+                    break
+        else:
+            entry["photo"] = photo_map.get(entry["broker_name"].strip().lower())
     return list(by_broker.values())
+
+
+# ---------------- Broker groups (duplas no ranking) ----------------
+class BrokerGroupCreate(BaseModel):
+    name: str
+    members: List[str] = []
+
+
+@api_router.get("/broker-groups")
+async def list_broker_groups(user: dict = Depends(get_current_user)):
+    docs = await db.broker_groups.find({}, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda g: (g.get("name") or "").lower())
+    return docs
+
+
+@api_router.post("/broker-groups")
+async def create_broker_group(data: BrokerGroupCreate, user: dict = Depends(require_master)):
+    if not (data.name or "").strip():
+        raise HTTPException(status_code=400, detail="Informe o nome da dupla/grupo")
+    members = [m.strip() for m in (data.members or []) if (m or "").strip()]
+    if len(members) < 2:
+        raise HTTPException(status_code=400, detail="Selecione ao menos 2 corretores para agrupar")
+    doc = {"id": f"grp_{uuid.uuid4().hex[:10]}", "name": data.name.strip(),
+           "members": members, "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.broker_groups.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.put("/broker-groups/{gid}")
+async def update_broker_group(gid: str, data: BrokerGroupCreate, user: dict = Depends(require_master)):
+    existing = await db.broker_groups.find_one({"id": gid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Grupo não encontrado")
+    members = [m.strip() for m in (data.members or []) if (m or "").strip()]
+    if len(members) < 2:
+        raise HTTPException(status_code=400, detail="Selecione ao menos 2 corretores para agrupar")
+    upd = {"name": data.name.strip(), "members": members}
+    await db.broker_groups.update_one({"id": gid}, {"$set": upd})
+    return {**existing, **upd}
+
+
+@api_router.delete("/broker-groups/{gid}")
+async def delete_broker_group(gid: str, user: dict = Depends(require_master)):
+    res = await db.broker_groups.delete_one({"id": gid})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Grupo não encontrado")
+    return {"ok": True}
+
+
+# ---------------- Notifications (notificações) ----------------
+async def _notify(user_id: str, ntype: str, message: str, meta: dict = None):
+    if not user_id:
+        return
+    await db.notifications.insert_one({
+        "id": f"ntf_{uuid.uuid4().hex[:12]}", "user_id": user_id, "type": ntype,
+        "message": message, "read": False, "meta": meta or {},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+async def _owner_rank_map(month, year):
+    sales = await _company_sales(month, year)
+    vol = {}
+    for s in sales:
+        brokers = s.get("brokers") or []
+        if brokers:
+            total = sum((b.get("split_pct") or 0) for b in brokers) or 100.0
+            for b in brokers:
+                oid = b.get("owner_id")
+                if oid:
+                    vol[oid] = vol.get(oid, 0) + (s.get("sale_value", 0) or 0) * ((b.get("split_pct") or 0) / total)
+        else:
+            oid = s.get("owner_id")
+            if oid:
+                vol[oid] = vol.get(oid, 0) + (s.get("sale_value", 0) or 0)
+    order = sorted(vol.items(), key=lambda kv: kv[1], reverse=True)
+    return {oid: i + 1 for i, (oid, _) in enumerate(order)}
+
+
+async def _post_sale_notifications(sale: dict):
+    try:
+        valor = _fmt_brl(sale.get("sale_value", 0))
+        msg = f"Nova venda: {sale.get('broker_name')} — {sale.get('property_name')} ({valor})"
+        masters = await db.users.find({"role": "master"}, {"_id": 0}).to_list(50)
+        for m in masters:
+            await _notify(m["user_id"], "new_sale", msg, {"sale_id": sale.get("id")})
+
+        sd = sale.get("sale_date", "") or ""
+        try:
+            month, year = int(sd[5:7]), int(sd[0:4])
+        except (ValueError, IndexError):
+            month = year = None
+
+        owner_ids = set(sale.get("broker_ids") or [])
+        if sale.get("owner_id"):
+            owner_ids.add(sale["owner_id"])
+        ranks = await _owner_rank_map(month, year)
+        all_sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
+        mlabel = MESES_PT[month - 1] if month else "ano"
+        for oid in owner_ids:
+            u = await db.users.find_one({"user_id": oid}, {"_id": 0})
+            if not u or u.get("role") != "corretor":
+                continue
+            if oid in ranks:
+                await _notify(oid, "ranking", f"Nova venda registrada! Você está em {ranks[oid]}º no ranking de {mlabel}.")
+            goals = await db.goals.find({"scope": "broker", "owner_id": oid}, {"_id": 0}).to_list(100)
+            for g in goals:
+                prog = await _goal_progress(g, all_sales)
+                notified = set(g.get("notified_levels", []))
+                level = None
+                if prog["pct"] >= 100 and 100 not in notified:
+                    level = 100
+                elif prog["pct"] >= 90 and 90 not in notified:
+                    level = 90
+                if level:
+                    mt = "VGV" if g.get("metric") == "vgv" else "vendas"
+                    txt = (f"🎯 Meta de {mt} atingida! Parabéns!" if level == 100
+                           else f"Você está a {prog['pct']}% da sua meta de {mt}. Falta pouco!")
+                    await _notify(oid, "goal", txt)
+                    notified.add(level)
+                    await db.goals.update_one({"id": g["id"]}, {"$set": {"notified_levels": list(notified)}})
+    except Exception as e:
+        logger.warning(f"notification generation failed: {e}")
+
+
+@api_router.get("/notifications")
+async def list_notifications(user: dict = Depends(get_current_user)):
+    docs = await db.notifications.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(200)
+    docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+    unread = sum(1 for d in docs if not d.get("read"))
+    return {"items": docs[:50], "unread": unread}
+
+
+@api_router.post("/notifications/read-all")
+async def read_all_notifications(user: dict = Depends(get_current_user)):
+    await db.notifications.update_many({"user_id": user["user_id"], "read": False}, {"$set": {"read": True}})
+    return {"ok": True}
+
+
+@api_router.patch("/notifications/{nid}/read")
+async def read_notification(nid: str, user: dict = Depends(get_current_user)):
+    await db.notifications.update_one({"id": nid, "user_id": user["user_id"]}, {"$set": {"read": True}})
+    return {"ok": True}
 
 
 @api_router.get("/monthly-series")

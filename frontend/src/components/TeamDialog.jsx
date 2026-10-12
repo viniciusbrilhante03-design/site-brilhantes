@@ -16,6 +16,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { brl, formatDateBR } from "@/lib/format";
+import GroupsManager from "@/components/GroupsManager";
 import { Users, Copy, Phone, Mail, IdCard, Link2, History, Camera, Plus, Pencil, Trash2, ArrowLeft, KeyRound } from "lucide-react";
 
 function fileToDataURL(file, max = 256) {
@@ -149,6 +150,7 @@ export default function TeamDialog({ open, onOpenChange }) {
         <Tabs defaultValue="equipe" className="mt-2">
           <TabsList>
             <TabsTrigger value="equipe" data-testid="tab-equipe">Corretores</TabsTrigger>
+            <TabsTrigger value="duplas" data-testid="tab-duplas"><Users className="h-4 w-4 mr-1" /> Duplas</TabsTrigger>
             <TabsTrigger value="loteamentos" data-testid="tab-loteamentos">Loteamentos</TabsTrigger>
             <TabsTrigger value="historico" data-testid="tab-historico"><History className="h-4 w-4 mr-1" /> Histórico</TabsTrigger>
           </TabsList>
@@ -209,6 +211,10 @@ export default function TeamDialog({ open, onOpenChange }) {
                   ))}
               </>
             )}
+          </TabsContent>
+
+          <TabsContent value="duplas" className="mt-3">
+            <GroupsManager enabled={open} />
           </TabsContent>
 
           <TabsContent value="loteamentos" className="space-y-3 mt-3">

@@ -17,6 +17,7 @@ import SaleFormDialog from "@/components/SaleFormDialog";
 import InstallmentsDialog from "@/components/InstallmentsDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
+import NotificationsBell from "@/components/NotificationsBell";
 import { LogOut, Moon, Sun, CalendarDays, KeyRound, Globe, TrendingUp, Wallet, Clock, Hash, UserRound } from "lucide-react";
 
 const ALL = "all";
@@ -39,7 +40,7 @@ export default function CorretorDashboard() {
 
   const salesQ = useQuery({ queryKey: ["sales", params], queryFn: async () => (await api.get("/sales", { params })).data });
   const statsQ = useQuery({ queryKey: ["stats", params], queryFn: async () => (await api.get("/stats", { params })).data });
-  const rankingQ = useQuery({ queryKey: ["ranking", params], queryFn: async () => (await api.get("/ranking", { params })).data });
+  const rankingQ = useQuery({ queryKey: ["ranking", params], queryFn: async () => (await api.get("/ranking", { params })).data, enabled: false });
   const goalsQ = useQuery({ queryKey: ["goals", params], queryFn: async () => (await api.get("/goals", { params })).data });
   const loteamentosQ = useQuery({ queryKey: ["loteamentos"], queryFn: async () => (await api.get("/loteamentos")).data });
   const loteamentos = useMemo(() => (loteamentosQ.data || []).map((l) => l.name), [loteamentosQ.data]);
@@ -98,6 +99,7 @@ export default function CorretorDashboard() {
               <SelectContent>{YEARS.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
             </Select>
             <Button variant="outline" size="icon" className="h-9 w-9" onClick={theme.toggle}>{theme.dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</Button>
+            <NotificationsBell />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button data-testid="user-menu" className="outline-none"><Avatar className="h-9 w-9 border border-border"><AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">{display.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar></button>
@@ -142,7 +144,7 @@ export default function CorretorDashboard() {
               onOpenAttachments={(x) => setAttachSale(x)}
             />
           </div>
-          <div className="space-y-6"><RankingCard ranking={rankingQ.data} /><GoalsCard goals={goalsQ.data} /></div>
+          <div className="space-y-6"><RankingCard /><GoalsCard goals={goalsQ.data} /></div>
         </div>
       </main>
 
