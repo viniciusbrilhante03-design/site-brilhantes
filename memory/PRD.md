@@ -102,6 +102,14 @@ entrou e o que falta entrar. Controle datado.
 - Novo botão "Clientes" no cabeçalho do gestor → ClientsDialog com busca e histórico expansível por cliente.
 - Corretor também tem autocomplete (vê só os próprios clientes).
 
+### Iteração 8 (2026-06 fork) — Metas (item 3 parcial/19) ✅
+- Modelo Goal: scope company|broker, metric vgv|count, target, month (None=ano), year.
+- CRUD /api/goals (master); GET escopado (corretor vê coletivas + próprias) com progresso calculado
+  por período próprio da meta; broker usa share (_partner_share) para parceria.
+- GoalsCard (barras de progresso) no painel do gestor (com "Gerenciar") e no painel do corretor (somente leitura).
+- GoalsDialog: criar/remover metas coletivas e individuais, VGV ou quantidade, mês ou ano.
+- Testes: 11/11 backend (test_clients_goals.py) + fluxos frontend 100% (iteration_6.json). Correção: botão Gerenciar type="button".
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

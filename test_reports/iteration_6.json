@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 6 — Clients + Goals features validated end-to-end. Backend: 11/11 pytest in /app/backend/tests/test_clients_goals.py pass (clients aggregation shape with WASHINGTON PINHEIRO, corretor scope isolation, goals validation 400s, master-only 403 for corretor, company+broker goal CRUD with computed current/pct/label, corretor goals scope, final 20 sales / 0 goals state). Frontend (master session_token=qa_session_vinicius_001): Clients dialog opens from header [btn-open-clients], search filters correctly, [client-toggle-washington pinheiro] expands the purchase history (GOLDEN VILLE GUAIUBA · Qd 9 Lt 26 · 10/10/2026 · Vinicius Brilhante · R$ 20.405,00). Nova venda client autocomplete: [sale-form-client-input] has datalist#clients-list with 1 option 'WASHINGTON PINHEIRO'; typing that name auto-prefills phone='85987734842' and email='WASHINGTONPINHEIRO77@GMAIL.COM' into sale-form-client-phone-input and sale-form-client-email-input (correct behavior). Goals dialog [goals-dialog] opens from [btn-manage-goals] (when invoked via element.click()); created a company VGV goal target=9999999 year=2026 via [goal-save-btn] (toast 'Meta criada!'), then deleted via [goal-del-<id>] + AlertDialog Remover (toast 'Meta removida.'). After cleanup: 0 goal-items in dialog, 0 goal-row in GoalsCard. Final DB state confirmed via API: 20 sales (0 TEST sales), 0 goals.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "GoalsCard 'Gerenciar' button",
+        "issue": "Button [data-testid=btn-manage-goals] renders as type='submit' (shadcn <Button> default). Playwright's real pointer click on it causes an unexpected side-effect: the Nova venda / sale-form-dialog opens instead of (or in addition to) the goals-dialog. Programmatic element.click() correctly opens only the goals-dialog. Real users clicking fast may also observe the sale form opening. Should set type='button' explicitly on the Button (and on any shadcn Button that is not a form submit).",
+        "selector": "[data-testid=btn-manage-goals]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_clients_goals.py",
+    "/app/test_reports/pytest/pytest_clients_goals.xml"
+  ],
+  "action_items": [
+    "In /app/frontend/src/components/GoalsCard.jsx line 19 (and any other shadcn <Button> used for toggles/triggers), add explicit type=\"button\" so the browser doesn't treat clicks as form submits. This resolves the Playwright-click side effect where sale-form-dialog opens when clicking 'Gerenciar'."
+  ],
+  "critical_code_review_comments": [
+    "server.py grew to 1529 lines across auth/sales/clients/goals/attachments/export/import — still a monolith. Carrying forward prior iteration recommendation to split into routers.",
+    "/api/clients iterates all sales for the user with no pagination. OK for current data (~20 sales), but once historical data grows, aggregate in Mongo ($group by client_name_lower) to avoid loading entire scope into memory.",
+    "/api/clients deduplicates by lowercased name only. If two different real clients share a name, their purchases will merge; and if phone/email differ across sales for the same name, only the FIRST non-empty value is kept. Consider also keying by (name_lower, phone) and/or returning all phone/email variants.",
+    "GoalCreate uses raw str for scope/metric. Pydantic Literal types (Literal['company','broker'], Literal['vgv','count']) would return 422 at the parser layer and keep manual 400 branches only for business rules (owner_id, target>0).",
+    "goal_progress recomputes _partner_share and iterates all sales for every goal on every GET /api/goals. For a few goals this is fine, but if the master defines many goals this is O(goals*sales). Consider computing company & per-broker totals once then applying to goals.",
+    "Clients datalist uses <option value=clientName/> without id, phone, or any disambiguation. Prefill works only on exact-name match (case-insensitive). If a user types a partial match and then blurs, no prefill happens. Acceptable UX; documented."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_clients_goals.py (new; 11 tests across 4 classes)"
+  ],
+  "success_rate": { "backend": "100% (11/11)", "frontend": "100% of clients + goals + autocomplete flows under test" },
+  "test_credentials": "Master cookie session_token=qa_session_vinicius_001 or Authorization: Bearer qa_session_vinicius_001. Corretor Carlão: carlos.teste@brilhantes.com / 12345678900 — login sets httpOnly cookie access_token.",
+  "seed_data_creation": "Transient only. test_clients_goals.py creates TEST_* sales and company/broker goals; a per-test tracked fixture teardown DELETEs each via API. Final cleanup check (test_zz_final_cleanup_state) asserts 20 sales / 0 goals in DB. Confirmed post-run via curl.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_clients_goals.py -v -o addopts=''` (the project pytest.ini enables -n2 xdist which breaks the final cleanup assertion because fixture teardown of parallel workers runs after it; disable xdist for this file). To open the goals-dialog in Playwright use page.evaluate() to call .click() directly on [data-testid=btn-manage-goals] — a native page.click() currently has a side-effect that opens the sale-form-dialog (see ui_bugs). The GoalsDialog uses Radix Select; Year selection via Radix overlay works with role='option' selectors. AlertDialog confirm uses button with name 'Remover'.",
+  "rca of the issue": "GoalsCard 'Gerenciar' button inherits HTMLButton default type='submit' because the shadcn <Button> wrapper from Dashboard doesn't pass type='button'. Although there is no explicit <form> wrapping the GoalsCard, the browser's event bubbling + React synthetic events on the live page cause the button click to also trigger the Dashboard-level 'Nova venda' handler. Programmatic .click() avoids the native event pathway and only invokes React's onClick (opens goals-dialog as intended). Fix: add type=\"button\" to the Button in /app/frontend/src/components/GoalsCard.jsx line 19 (and audit any other non-submit shadcn Buttons across the codebase)."
+}

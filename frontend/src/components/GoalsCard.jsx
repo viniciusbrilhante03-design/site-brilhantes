@@ -9,14 +9,14 @@ const fmtVal = (metric, v) => (metric === "vgv" ? brl(v) : `${Math.round(v)}`);
 export default function GoalsCard({ goals, onManage }) {
   const list = goals || [];
   return (
-    <Card className="p-5 rounded-xl border-border/60 h-full" data-testid="goals-card">
+    <Card className="p-5 rounded-xl border-border/60" data-testid="goals-card">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Target className="h-5 w-5 text-[hsl(var(--emerald))]" />
           <h3 className="font-heading font-bold text-lg">Metas</h3>
         </div>
         {onManage && (
-          <Button data-testid="btn-manage-goals" variant="outline" size="sm" className="h-8 gap-1.5" onClick={onManage}>
+          <Button data-testid="btn-manage-goals" type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={onManage}>
             <Settings2 className="h-4 w-4" /> Gerenciar
           </Button>
         )}

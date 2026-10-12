@@ -18,7 +18,7 @@ export default function RankingCard({ ranking }) {
   ];
 
   return (
-    <Card className="p-5 rounded-xl border-border/60 h-full" data-testid="broker-ranking">
+    <Card className="p-5 rounded-xl border-border/60" data-testid="broker-ranking">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Trophy className="h-5 w-5 text-[hsl(var(--gold))]" />
