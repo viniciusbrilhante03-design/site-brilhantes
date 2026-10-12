@@ -75,7 +75,8 @@ def _display(user: dict) -> str:
 def _scope_query(user: dict) -> dict:
     if user.get("role") == "master":
         return {}
-    return {"owner_id": user["user_id"]}
+    uid = user["user_id"]
+    return {"$or": [{"owner_id": uid}, {"broker_ids": uid}]}
 
 
 def _set_jwt_cookie(response: Response, token: str):
@@ -120,6 +121,12 @@ class Installment(BaseModel):
     received_date: Optional[str] = None
 
 
+class SaleBroker(BaseModel):
+    name: str
+    split_pct: float = 100.0   # % do pool do corretor que vai para este parceiro
+    owner_id: Optional[str] = None
+
+
 class SaleCreate(BaseModel):
     property_name: str  # nome do loteamento
     quadra: Optional[str] = ""
@@ -128,6 +135,7 @@ class SaleCreate(BaseModel):
     client_phone: Optional[str] = ""
     client_email: Optional[str] = ""
     broker_name: str
+    brokers: List[SaleBroker] = []
     sale_date: str  # YYYY-MM-DD
     sale_value: float
     commission_rate: float = 0.0
@@ -147,6 +155,7 @@ class Sale(SaleCreate):
     user_id: str
     owner_id: Optional[str] = None
     owner_name: Optional[str] = ""
+    broker_ids: List[str] = []
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -497,22 +506,47 @@ async def delete_loteamento(lot_id: str, user: dict = Depends(require_master)):
     return {"ok": True}
 
 
+async def _normalize_brokers(payload: dict):
+    """Resolve a lista de corretores (parceria) -> nomes, %, owner_ids."""
+    raw = payload.get("brokers") or []
+    if not raw:
+        nm = (payload.get("broker_name") or "").strip()
+        raw = [{"name": nm, "split_pct": 100.0}] if nm else []
+    resolved, ids = [], []
+    for b in raw:
+        nm = ((b.get("name") if isinstance(b, dict) else "") or "").strip()
+        if not nm:
+            continue
+        pct = b.get("split_pct", 0) if isinstance(b, dict) else 0
+        corr = await _resolve_corretor_by_name(nm)
+        oid = corr["user_id"] if corr else None
+        resolved.append({"name": nm, "split_pct": float(pct or 0), "owner_id": oid})
+        if oid:
+            ids.append(oid)
+    return resolved, ids
+
+
 @api_router.post("/sales", response_model=Sale)
 async def create_sale(data: SaleCreate, user: dict = Depends(get_current_user)):
     payload = data.model_dump()
     if user.get("role") == "corretor":
         if not await _loteamento_exists(payload["property_name"]):
             raise HTTPException(status_code=400, detail="Loteamento não cadastrado. Peça ao gestor para cadastrá-lo.")
+        payload["brokers"] = [{"name": _display(user), "split_pct": 100.0, "owner_id": user["user_id"]}]
         payload["broker_name"] = _display(user)
-        owner_id, owner_name = user["user_id"], _display(user)
+        owner_id, owner_name, broker_ids = user["user_id"], _display(user), [user["user_id"]]
     else:
         await _ensure_loteamento(payload["property_name"])
-        corr = await _resolve_corretor_by_name(payload.get("broker_name"))
-        if corr:
-            owner_id, owner_name = corr["user_id"], _display(corr)
+        resolved, broker_ids = await _normalize_brokers(payload)
+        payload["brokers"] = resolved
+        if resolved:
+            payload["broker_name"] = " + ".join(r["name"] for r in resolved)
+            owner_id = resolved[0]["owner_id"] or user["user_id"]
+            owner_name = resolved[0]["name"]
         else:
             owner_id, owner_name = user["user_id"], _display(user)
-    sale = Sale(**payload, user_id=user["user_id"], owner_id=owner_id, owner_name=owner_name)
+    sale = Sale(**payload, user_id=user["user_id"], owner_id=owner_id,
+                owner_name=owner_name, broker_ids=broker_ids)
     await db.sales.insert_one(sale.model_dump())
     return sale
 
@@ -525,12 +559,20 @@ async def update_sale(sale_id: str, data: SaleCreate, user: dict = Depends(get_c
     payload = data.model_dump()
     extra = {}
     if user.get("role") == "corretor":
+        payload["brokers"] = existing.get("brokers") or [{
+            "name": existing.get("broker_name") or _display(user),
+            "split_pct": 100.0, "owner_id": existing.get("owner_id")}]
         payload["broker_name"] = existing.get("broker_name") or _display(user)
     else:
         await _ensure_loteamento(payload["property_name"])
-        corr = await _resolve_corretor_by_name(payload.get("broker_name"))
-        if corr:
-            extra = {"owner_id": corr["user_id"], "owner_name": _display(corr)}
+        resolved, broker_ids = await _normalize_brokers(payload)
+        payload["brokers"] = resolved
+        if resolved:
+            payload["broker_name"] = " + ".join(r["name"] for r in resolved)
+            extra = {"owner_id": resolved[0]["owner_id"] or existing.get("owner_id"),
+                     "owner_name": resolved[0]["name"], "broker_ids": broker_ids}
+        else:
+            extra = {"broker_ids": []}
     await db.sales.update_one({"id": sale_id}, {"$set": {**payload, **extra}})
     return {**existing, **payload, **extra}
 
@@ -652,22 +694,65 @@ def _comm_overdue(s: dict) -> float:
                if not i.get("received") and (i.get("due_date") or "") < today)
 
 
+def _broker_pool(s: dict) -> float:
+    """Comissão total destinada aos corretores (antes de dividir entre parceiros)."""
+    return _broker_comm(s)
+
+
+def _partner_share(s: dict, uid: str) -> float:
+    brokers = s.get("brokers") or []
+    if not brokers:
+        return 1.0 if s.get("owner_id") == uid else 0.0
+    total = sum((b.get("split_pct") or 0) for b in brokers) or 100.0
+    mine = sum((b.get("split_pct") or 0) for b in brokers if b.get("owner_id") == uid)
+    return (mine / total) if total else 0.0
+
+
+def _received_fraction(s: dict) -> float:
+    cv = s.get("commission_value", 0) or 0
+    if cv <= 0:
+        return 1.0 if s.get("commission_received") else 0.0
+    return min(_comm_received(s) / cv, 1.0)
+
+
+def _overdue_fraction(s: dict) -> float:
+    cv = s.get("commission_value", 0) or 0
+    if cv <= 0:
+        return 0.0
+    return min(_comm_overdue(s) / cv, 1.0)
+
+
 @api_router.get("/stats")
 async def stats(month: Optional[int] = None, year: Optional[int] = None,
                 user: dict = Depends(get_current_user)):
     sales = await list_sales(month=month, year=year, user=user)
-    total_vendido = sum(s.get("sale_value", 0) or 0 for s in sales)
-    comissao_total = sum(s.get("commission_value", 0) or 0 for s in sales)
-    comissao_corretor = sum(_broker_comm(s) for s in sales)
-    comissao_imobiliaria = sum(_agency_comm(s) for s in sales)
-    entrada_total = sum(s.get("entrada", 0) or 0 for s in sales)
-    ja_entrou = sum(_comm_received(s) for s in sales)
-    falta_entrar = sum(_comm_pending(s) for s in sales)
-    comissao_vencida = sum(_comm_overdue(s) for s in sales)
-    qtd = len(sales)
-    ticket_medio = (total_vendido / qtd) if qtd else 0
     company = await _company_sales(month, year)
     vgv_geral = sum(s.get("sale_value", 0) or 0 for s in company)
+    qtd = len(sales)
+
+    if user.get("role") == "corretor":
+        uid = user["user_id"]
+        def sh(s):
+            return _partner_share(s, uid)
+        total_vendido = sum((s.get("sale_value", 0) or 0) * sh(s) for s in sales)
+        comissao_total = sum((s.get("commission_value", 0) or 0) * sh(s) for s in sales)
+        comissao_corretor = sum(_broker_pool(s) * sh(s) for s in sales)
+        comissao_imobiliaria = 0.0
+        entrada_total = sum((s.get("entrada", 0) or 0) * sh(s) for s in sales)
+        ja_entrou = sum(_broker_pool(s) * sh(s) * _received_fraction(s) for s in sales)
+        falta_entrar = sum(_broker_pool(s) * sh(s) * (1 - _received_fraction(s)) for s in sales)
+        comissao_vencida = sum(_broker_pool(s) * sh(s) * _overdue_fraction(s) for s in sales)
+    else:
+        total_vendido = sum(s.get("sale_value", 0) or 0 for s in sales)
+        comissao_total = sum(s.get("commission_value", 0) or 0 for s in sales)
+        comissao_corretor = sum(_broker_comm(s) for s in sales)
+        comissao_imobiliaria = sum(_agency_comm(s) for s in sales)
+        entrada_total = sum(s.get("entrada", 0) or 0 for s in sales)
+        ja_entrou = sum(_comm_received(s) for s in sales)
+        falta_entrar = sum(_comm_pending(s) for s in sales)
+        comissao_vencida = sum(_comm_overdue(s) for s in sales)
+
+    ticket_medio = (total_vendido / qtd) if qtd else 0
     return {
         "total_vendido": total_vendido,
         "comissao_total": comissao_total,
@@ -692,15 +777,24 @@ async def ranking(month: Optional[int] = None, year: Optional[int] = None,
     sales = await _company_sales(month, year)
     by_broker = {}
     for s in sales:
-        name = s.get("broker_name", "—") or "—"
-        b = by_broker.setdefault(name, {
-            "broker_name": name, "qtd": 0, "volume": 0.0,
-            "comissao": 0.0, "comissao_corretor": 0.0, "photo": None,
-        })
-        b["qtd"] += 1
-        b["volume"] += s.get("sale_value", 0) or 0
-        b["comissao"] += s.get("commission_value", 0) or 0
-        b["comissao_corretor"] += _broker_comm(s)
+        brokers = s.get("brokers") or [{
+            "name": s.get("broker_name", "—") or "—", "split_pct": 100.0,
+            "owner_id": s.get("owner_id")}]
+        total = sum((b.get("split_pct") or 0) for b in brokers) or 100.0
+        sv = s.get("sale_value", 0) or 0
+        cv = s.get("commission_value", 0) or 0
+        pool = _broker_pool(s)
+        for b in brokers:
+            name = (b.get("name") or "—")
+            share = ((b.get("split_pct") or 0) / total) if total else 0
+            bk = by_broker.setdefault(name, {
+                "broker_name": name, "qtd": 0, "volume": 0.0,
+                "comissao": 0.0, "comissao_corretor": 0.0, "photo": None,
+            })
+            bk["qtd"] += 1
+            bk["volume"] += sv * share
+            bk["comissao"] += cv * share
+            bk["comissao_corretor"] += pool * share
 
     brokers = await db.brokers.find({}, {"_id": 0}).to_list(1000)
     photo_map = {}
@@ -884,6 +978,7 @@ def build_sale_from_row(d, user_id):
         property_name=prop, quadra=_clean(d.get("quadra")), lote=_clean(d.get("lote")),
         client_name=_clean(d.get("client_name")), client_phone=_clean(d.get("client_phone")),
         client_email=_clean(d.get("client_email")), broker_name=_clean(d.get("broker_name")) or "—",
+        brokers=[{"name": _clean(d.get("broker_name")) or "—", "split_pct": 100.0, "owner_id": None}],
         sale_date=date, sale_value=sv, commission_rate=rate, commission_value=cval,
         broker_split=60.0, broker_commission=broker_comm, agency_commission=agency_comm,
         entrada=entrada, parcelado=parcelado, installments=installments, notes="",
@@ -1139,19 +1234,39 @@ async def delete_attachment(att_id: str, user: dict = Depends(get_current_user))
 async def list_corretores(user: dict = Depends(require_master)):
     users = await db.users.find({"role": "corretor"}, {"_id": 0}).to_list(500)
     sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
-    by_owner = {}
+    agg = {}
     for s in sales:
-        by_owner.setdefault(s.get("owner_id"), []).append(s)
+        sv = s.get("sale_value", 0) or 0
+        pool = _broker_pool(s)
+        brokers = s.get("brokers") or []
+        if brokers:
+            total = sum((b.get("split_pct") or 0) for b in brokers) or 100.0
+            for b in brokers:
+                oid = b.get("owner_id")
+                if not oid:
+                    continue
+                share = ((b.get("split_pct") or 0) / total) if total else 0
+                a = agg.setdefault(oid, {"qtd": 0, "volume": 0.0, "comm": 0.0})
+                a["qtd"] += 1
+                a["volume"] += sv * share
+                a["comm"] += pool * share
+        else:
+            oid = s.get("owner_id")
+            if oid:
+                a = agg.setdefault(oid, {"qtd": 0, "volume": 0.0, "comm": 0.0})
+                a["qtd"] += 1
+                a["volume"] += sv
+                a["comm"] += pool
     out = []
     for u in users:
         has_login = bool(u.pop("password_hash", None))
-        mine = by_owner.get(u["user_id"], [])
+        a = agg.get(u["user_id"], {"qtd": 0, "volume": 0.0, "comm": 0.0})
         out.append({
             **u,
             "has_login": has_login,
-            "qtd_vendas": len(mine),
-            "volume": sum(x.get("sale_value", 0) or 0 for x in mine),
-            "comissao_corretor": sum(_broker_comm(x) for x in mine),
+            "qtd_vendas": a["qtd"],
+            "volume": a["volume"],
+            "comissao_corretor": a["comm"],
         })
     out.sort(key=lambda x: x.get("volume", 0), reverse=True)
     return out
@@ -1202,7 +1317,8 @@ async def delete_corretor(owner_id: str, user: dict = Depends(require_master)):
 
 @api_router.get("/corretores/{owner_id}/sales")
 async def corretor_sales(owner_id: str, user: dict = Depends(require_master)):
-    docs = await db.sales.find({"owner_id": owner_id}, {"_id": 0}).to_list(2000)
+    docs = await db.sales.find(
+        {"$or": [{"owner_id": owner_id}, {"broker_ids": owner_id}]}, {"_id": 0}).to_list(2000)
     docs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return docs
 

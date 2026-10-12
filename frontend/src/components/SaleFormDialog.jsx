@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { brl } from "@/lib/format";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Users } from "lucide-react";
 
 const empty = {
   property_name: "",
@@ -16,7 +16,7 @@ const empty = {
   client_name: "",
   client_phone: "",
   client_email: "",
-  broker_name: "",
+  brokers: [{ name: "", split_pct: 100 }],
   sale_date: new Date().toISOString().slice(0, 10),
   sale_value: "",
   commission_rate: "",
@@ -35,6 +35,15 @@ function addMonths(isoDate, n) {
   return d.toISOString().slice(0, 10);
 }
 
+function initialBrokers(initial, lockBroker, lockBrokerName) {
+  if (lockBroker && lockBrokerName) return [{ name: lockBrokerName, split_pct: 100 }];
+  if (initial?.brokers?.length) {
+    return initial.brokers.map((b) => ({ name: b.name || "", split_pct: b.split_pct ?? 0 }));
+  }
+  if (initial?.broker_name) return [{ name: initial.broker_name, split_pct: 100 }];
+  return [{ name: "", split_pct: 100 }];
+}
+
 export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, brokers, loteamentos, lockBroker, lockBrokerName }) {
   const [form, setForm] = useState(empty);
   const [numParcelas, setNumParcelas] = useState(1);
@@ -42,10 +51,14 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
   useEffect(() => {
     if (open) {
       if (initial) {
-        setForm({ ...empty, ...initial, broker_split: initial.broker_split ?? 60 });
+        setForm({
+          ...empty, ...initial,
+          broker_split: initial.broker_split ?? 60,
+          brokers: initialBrokers(initial, lockBroker, lockBrokerName),
+        });
         setNumParcelas(initial.installments?.length || 1);
       } else {
-        setForm(lockBroker && lockBrokerName ? { ...empty, broker_name: lockBrokerName } : empty);
+        setForm({ ...empty, brokers: initialBrokers(null, lockBroker, lockBrokerName) });
         setNumParcelas(1);
       }
     }
@@ -74,6 +87,25 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
   }, [form.commission_value, brokerComm]);
 
   const agencySplit = 100 - (parseFloat(form.broker_split) || 0);
+
+  const partners = form.brokers || [];
+  const partnersSum = useMemo(
+    () => partners.reduce((s, b) => s + (parseFloat(b.split_pct) || 0), 0),
+    [partners]
+  );
+  const multi = partners.length > 1;
+  const sumOk = !multi || Math.round(partnersSum) === 100;
+
+  const updateBroker = (idx, key, value) => {
+    setForm((f) => {
+      const list = [...f.brokers];
+      list[idx] = { ...list[idx], [key]: value };
+      return { ...f, brokers: list };
+    });
+  };
+  const addBroker = () => setForm((f) => ({ ...f, brokers: [...f.brokers, { name: "", split_pct: 0 }] }));
+  const removeBroker = (idx) =>
+    setForm((f) => ({ ...f, brokers: f.brokers.filter((_, i) => i !== idx) }));
 
   const generateInstallments = () => {
     const n = Math.max(1, parseInt(numParcelas) || 1);
@@ -114,6 +146,9 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
   );
 
   const handleSubmit = () => {
+    const cleanBrokers = partners
+      .filter((b) => (b.name || "").trim())
+      .map((b) => ({ name: b.name.trim(), split_pct: parseFloat(b.split_pct) || 0 }));
     const payload = {
       property_name: form.property_name.trim(),
       quadra: (form.quadra || "").trim(),
@@ -121,7 +156,8 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
       client_name: (form.client_name || "").trim(),
       client_phone: (form.client_phone || "").trim(),
       client_email: (form.client_email || "").trim(),
-      broker_name: form.broker_name.trim(),
+      broker_name: cleanBrokers.map((b) => b.name).join(" + "),
+      brokers: cleanBrokers,
       sale_date: form.sale_date,
       sale_value: parseFloat(form.sale_value) || 0,
       commission_rate: parseFloat(form.commission_rate) || 0,
@@ -138,7 +174,8 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
     onSubmit(payload);
   };
 
-  const valid = form.property_name.trim() && form.broker_name.trim() && parseFloat(form.sale_value) > 0;
+  const brokersValid = partners.some((b) => (b.name || "").trim()) && sumOk;
+  const valid = form.property_name.trim() && brokersValid && parseFloat(form.sale_value) > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -179,19 +216,63 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
                   onChange={(e) => set("sale_date", e.target.value)} />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Corretor (nome de guerra)</Label>
+
+            {/* Corretores / Parceria */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5"><Users className="h-4 w-4" /> Corretor(es)</Label>
+                {!lockBroker && (
+                  <Button type="button" variant="ghost" size="sm" className="h-7 text-xs gap-1"
+                    data-testid="sale-form-add-broker" onClick={addBroker}>
+                    <Plus className="h-3.5 w-3.5" /> Adicionar parceiro
+                  </Button>
+                )}
+              </div>
+
               {lockBroker ? (
-                <Input data-testid="sale-form-broker-locked" value={form.broker_name} disabled className="opacity-90" />
+                <Input data-testid="sale-form-broker-locked" value={partners[0]?.name || ""} disabled className="opacity-90" />
               ) : (
-                <>
-                  <Input data-testid="sale-form-broker-select" list="brokers-list" value={form.broker_name}
-                    onChange={(e) => set("broker_name", e.target.value)} placeholder="Digite o nome de guerra do corretor" />
+                <div className="space-y-2">
+                  {partners.map((b, idx) => {
+                    const share = multi && partnersSum ? (parseFloat(b.split_pct) || 0) / 100 : 1;
+                    return (
+                      <div key={idx} className="flex items-center gap-2" data-testid={`broker-row-${idx}`}>
+                        <Input data-testid={`sale-form-broker-select-${idx}`} list="brokers-list" value={b.name}
+                          onChange={(e) => updateBroker(idx, "name", e.target.value)}
+                          placeholder="Nome de guerra do corretor" className="flex-1" />
+                        {multi && (
+                          <>
+                            <div className="relative w-24">
+                              <Input data-testid={`sale-form-broker-pct-${idx}`} type="number" min="0" max="100"
+                                value={b.split_pct} onChange={(e) => updateBroker(idx, "split_pct", e.target.value)}
+                                className="pr-6 text-right" />
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                            </div>
+                            <span className="w-24 text-right text-xs tabular text-[hsl(var(--emerald))]" data-testid={`sale-form-broker-value-${idx}`}>
+                              {brl(brokerComm * share)}
+                            </span>
+                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive shrink-0"
+                              data-testid={`sale-form-remove-broker-${idx}`} onClick={() => removeBroker(idx)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
                   <datalist id="brokers-list">
-                    {(brokers || []).map((b) => <option key={b} value={b} />)}
+                    {(brokers || []).map((bn) => <option key={bn} value={bn} />)}
                   </datalist>
-                  <p className="text-xs text-muted-foreground">A venda é vinculada automaticamente ao corretor informado.</p>
-                </>
+                  {multi && (
+                    <p className={`text-xs ${sumOk ? "text-muted-foreground" : "text-destructive font-medium"}`}
+                      data-testid="sale-form-split-sum">
+                      Soma das divisões: <strong>{Math.round(partnersSum)}%</strong>{sumOk ? " ✓" : " — deve somar 100%"}
+                    </p>
+                  )}
+                  {!multi && (
+                    <p className="text-xs text-muted-foreground">A venda é vinculada automaticamente ao corretor informado.</p>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -239,7 +320,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
               </div>
             </div>
 
-            {/* Divisão da comissão */}
+            {/* Divisão da comissão corretor x imobiliária */}
             <div className="rounded-xl border border-border/60 p-4 bg-muted/30 space-y-3">
               <div className="grid sm:grid-cols-3 gap-4 items-end">
                 <div className="space-y-1.5">
@@ -248,7 +329,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
                     value={form.broker_split} onChange={(e) => set("broker_split", e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-muted-foreground">Corretor</Label>
+                  <Label className="text-muted-foreground">Corretor(es)</Label>
                   <div data-testid="sale-form-broker-commission" className="h-10 flex items-center font-heading font-bold tabular text-[hsl(var(--emerald))]">
                     {brl(brokerComm)}
                   </div>
@@ -261,7 +342,8 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Divisão automática: <strong>{form.broker_split || 0}%</strong> corretor / <strong>{agencySplit}%</strong> imobiliária.
+                Divisão: <strong>{form.broker_split || 0}%</strong> corretor(es) / <strong>{agencySplit}%</strong> imobiliária.
+                {multi && " O valor dos corretores é dividido conforme os percentuais da parceria."}
               </p>
             </div>
 
