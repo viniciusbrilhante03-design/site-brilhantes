@@ -185,6 +185,20 @@ class CorretorProfile(BaseModel):
     active: bool = True
 
 
+class GoalCreate(BaseModel):
+    scope: str                       # "company" | "broker"
+    owner_id: Optional[str] = None   # obrigatório se scope == "broker"
+    metric: str                      # "vgv" | "count"
+    target: float
+    month: Optional[int] = None      # None = ano inteiro
+    year: int
+
+
+class Goal(GoalCreate):
+    id: str = Field(default_factory=lambda: f"goal_{uuid.uuid4().hex[:12]}")
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
 # ---------------- Auth ----------------
 async def _resolve_token(token: str):
     session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
@@ -523,6 +537,13 @@ async def _normalize_brokers(payload: dict):
         resolved.append({"name": nm, "split_pct": float(pct or 0), "owner_id": oid})
         if oid:
             ids.append(oid)
+    if len(resolved) == 1:
+        resolved[0]["split_pct"] = 100.0
+    elif len(resolved) > 1:
+        total = sum(r["split_pct"] for r in resolved)
+        if abs(total - 100.0) > 0.01:
+            raise HTTPException(status_code=400,
+                                detail=f"A divisão da comissão entre os corretores deve somar 100% (atual: {round(total)}%).")
     return resolved, ids
 
 
@@ -824,6 +845,116 @@ async def monthly_series(year: int, user: dict = Depends(get_current_user)):
         except (ValueError, IndexError):
             continue
     return months
+
+
+# ---------------- Clients (clientes) ----------------
+@api_router.get("/clients")
+async def list_clients(user: dict = Depends(get_current_user)):
+    docs = await db.sales.find(_scope_query(user), {"_id": 0}).to_list(5000)
+    clients = {}
+    for s in docs:
+        nm = (s.get("client_name") or "").strip()
+        if not nm:
+            continue
+        key = nm.lower()
+        c = clients.setdefault(key, {
+            "name": nm, "phone": "", "email": "", "qtd": 0, "volume": 0.0,
+            "last_date": "", "purchases": [],
+        })
+        if s.get("client_phone") and not c["phone"]:
+            c["phone"] = s["client_phone"]
+        if s.get("client_email") and not c["email"]:
+            c["email"] = s["client_email"]
+        c["qtd"] += 1
+        c["volume"] += s.get("sale_value", 0) or 0
+        sd = s.get("sale_date", "") or ""
+        if sd > c["last_date"]:
+            c["last_date"] = sd
+        c["purchases"].append({
+            "id": s.get("id"), "property_name": s.get("property_name", ""),
+            "quadra": s.get("quadra", ""), "lote": s.get("lote", ""),
+            "sale_date": sd, "sale_value": s.get("sale_value", 0) or 0,
+            "broker_name": s.get("broker_name", ""),
+        })
+    out = list(clients.values())
+    for c in out:
+        c["purchases"].sort(key=lambda p: p.get("sale_date", ""), reverse=True)
+    out.sort(key=lambda c: c["name"].lower())
+    return out
+
+
+# ---------------- Goals (metas) ----------------
+async def _goal_progress(g: dict, all_sales: list):
+    gsales = [s for s in all_sales if _match_period(s, g.get("month"), g["year"])]
+    if g.get("scope") == "company":
+        cur = (sum(s.get("sale_value", 0) or 0 for s in gsales)
+               if g.get("metric") == "vgv" else len(gsales))
+        label = "Imobiliária"
+    else:
+        oid = g.get("owner_id")
+        vol, cnt = 0.0, 0
+        for s in gsales:
+            share = _partner_share(s, oid)
+            if share > 0:
+                vol += (s.get("sale_value", 0) or 0) * share
+                cnt += 1
+        cur = vol if g.get("metric") == "vgv" else cnt
+        u = await db.users.find_one({"user_id": oid}, {"_id": 0})
+        label = (u.get("war_name") or u.get("name")) if u else "Corretor"
+    tgt = g.get("target") or 0
+    pct = round(min(cur / tgt * 100, 100), 1) if tgt else 0
+    return {**g, "current": cur, "pct": pct, "label": label}
+
+
+@api_router.get("/goals")
+async def list_goals(month: Optional[int] = None, year: Optional[int] = None,
+                     user: dict = Depends(get_current_user)):
+    yr = year or datetime.now(timezone.utc).year
+    goals = await db.goals.find({"year": yr}, {"_id": 0}).to_list(500)
+    if month is None:
+        goals = [g for g in goals if g.get("month") is None]
+    else:
+        goals = [g for g in goals if g.get("month") in (None, month)]
+    if user.get("role") == "corretor":
+        uid = user["user_id"]
+        goals = [g for g in goals if g.get("scope") == "company" or g.get("owner_id") == uid]
+    all_sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
+    out = [await _goal_progress(g, all_sales) for g in goals]
+    out.sort(key=lambda g: (g.get("scope") != "company", g.get("label", "")))
+    return out
+
+
+@api_router.post("/goals", response_model=Goal)
+async def create_goal(data: GoalCreate, user: dict = Depends(require_master)):
+    if data.scope not in ("company", "broker"):
+        raise HTTPException(status_code=400, detail="Escopo inválido")
+    if data.metric not in ("vgv", "count"):
+        raise HTTPException(status_code=400, detail="Métrica inválida")
+    if data.scope == "broker" and not data.owner_id:
+        raise HTTPException(status_code=400, detail="Selecione o corretor da meta")
+    if (data.target or 0) <= 0:
+        raise HTTPException(status_code=400, detail="Informe um alvo maior que zero")
+    goal = Goal(**data.model_dump())
+    await db.goals.insert_one(goal.model_dump())
+    return goal
+
+
+@api_router.put("/goals/{goal_id}", response_model=Goal)
+async def update_goal(goal_id: str, data: GoalCreate, user: dict = Depends(require_master)):
+    existing = await db.goals.find_one({"id": goal_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Meta não encontrada")
+    upd = data.model_dump()
+    await db.goals.update_one({"id": goal_id}, {"$set": upd})
+    return {**existing, **upd}
+
+
+@api_router.delete("/goals/{goal_id}")
+async def delete_goal(goal_id: str, user: dict = Depends(require_master)):
+    res = await db.goals.delete_one({"id": goal_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Meta não encontrada")
+    return {"ok": True}
 
 
 # ---------------- Import (Excel / CSV / PDF) ----------------

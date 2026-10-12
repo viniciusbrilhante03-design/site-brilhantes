@@ -23,8 +23,11 @@ import InstallmentsDialog from "@/components/InstallmentsDialog";
 import ImportDialog from "@/components/ImportDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import TeamDialog from "@/components/TeamDialog";
+import ClientsDialog from "@/components/ClientsDialog";
+import GoalsCard from "@/components/GoalsCard";
+import GoalsDialog from "@/components/GoalsDialog";
 
-import { LogOut, Moon, Sun, CalendarDays, UsersRound } from "lucide-react";
+import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -44,6 +47,8 @@ export default function Dashboard() {
   const [importOpen, setImportOpen] = useState(false);
   const [attachSale, setAttachSale] = useState(null);
   const [teamOpen, setTeamOpen] = useState(false);
+  const [clientsOpen, setClientsOpen] = useState(false);
+  const [goalsOpen, setGoalsOpen] = useState(false);
 
   const params = useMemo(() => {
     const p = { year };
@@ -75,9 +80,17 @@ export default function Dashboard() {
     queryKey: ["corretores"],
     queryFn: async () => (await api.get("/corretores")).data,
   });
+  const clientsQ = useQuery({
+    queryKey: ["clients"],
+    queryFn: async () => (await api.get("/clients")).data,
+  });
+  const goalsQ = useQuery({
+    queryKey: ["goals", params],
+    queryFn: async () => (await api.get("/goals", { params })).data,
+  });
 
   const invalidateAll = () => {
-    ["sales", "stats", "ranking", "series", "loteamentos", "corretores"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    ["sales", "stats", "ranking", "series", "loteamentos", "corretores", "clients", "goals"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   };
 
   const loteamentos = useMemo(() => (loteamentosQ.data || []).map((l) => l.name), [loteamentosQ.data]);
@@ -170,6 +183,11 @@ export default function Dashboard() {
               {theme.dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
 
+            <Button data-testid="btn-open-clients" variant="outline" className="h-9 gap-1.5"
+              onClick={() => setClientsOpen(true)}>
+              <Contact className="h-4 w-4" /><span className="hidden md:inline">Clientes</span>
+            </Button>
+
             <Button data-testid="btn-open-team" variant="outline" className="h-9 gap-1.5"
               onClick={() => setTeamOpen(true)}>
               <UsersRound className="h-4 w-4" /><span className="hidden md:inline">Equipe</span>
@@ -215,8 +233,9 @@ export default function Dashboard() {
           <div className="lg:col-span-2">
             <MonthlyChart series={seriesQ.data} activeMonth={month === ALL ? null : month} />
           </div>
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 space-y-6">
             <RankingCard ranking={rankingQ.data} />
+            <GoalsCard goals={goalsQ.data} onManage={() => setGoalsOpen(true)} />
           </div>
         </div>
 
@@ -240,6 +259,7 @@ export default function Dashboard() {
         initial={editing}
         brokers={brokers}
         loteamentos={loteamentos}
+        clients={clientsQ.data || []}
       />
 
       <InstallmentsDialog
@@ -262,6 +282,8 @@ export default function Dashboard() {
       />
 
       <TeamDialog open={teamOpen} onOpenChange={setTeamOpen} />
+      <ClientsDialog open={clientsOpen} onOpenChange={setClientsOpen} />
+      <GoalsDialog open={goalsOpen} onOpenChange={setGoalsOpen} />
     </div>
   );
 }

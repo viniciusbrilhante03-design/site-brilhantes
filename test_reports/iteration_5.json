@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 5 — P0 multi-broker (parceria) + commission-split feature end-to-end validated. Backend: 7/7 new pytest in /app/backend/tests/test_multi_broker.py pass. Single-broker payload (brokers:[{name:'Carlão',split_pct:100}]) is backward compatible — owner_id resolved, broker_name set, broker_ids=[owner]. Two-broker partnership (Carlão 60 / Aninha 40) produces broker_name='Carlão + Aninha', each broker has resolved owner_id, broker_ids contains BOTH user_ids. PUT /api/sales/{id} re-resolves owner_ids/broker_ids when the split is changed (verified moving 60/40 → single Aninha 100%). /api/ranking?month&year splits volume AND comissao AND comissao_corretor by each broker's % share and increments qtd+1 for each partner (confirmed both Carlão and Aninha rows showed proportional values; dashboard UI shows Carlão R$1.004.000 and Aninha R$200.000 after creating a 500k 60/40 sale → +300k and +200k deltas respectively). Corretor scope: carlos.teste@brilhantes.com (Carlão) sees partnership sale in GET /api/sales via broker_ids $or branch, and GET /api/stats returns only Carlão's proportional share (total_vendido includes 60%*500000 = 300000, comissao_corretor includes 60%*15000 = 9000). Master GET /api/stats remains company-wide (sees full 500k / full 15k pool). DELETE /api/sales/{id} moves the sale to sales_history and removes it from /api/sales. Frontend (master session_token=qa_session_vinicius_001): opened 'Nova venda', clicked [data-testid=sale-form-add-broker] → broker-row-1 appears, filled Carlão/60 and Aninha/40 → [data-testid=sale-form-split-sum] shows 'Soma das divisões: 100% ✓' and [data-testid=sale-form-submit-button] becomes enabled; changing Aninha to 30% shows '90% — deve somar 100%' and disables submit. Submitted with 60/40 → toast 'Venda cadastrada!' + 'Carlão + Aninha' appears in vendas table and in Ranking de Corretores panel. All test sales were deleted after each test; the 20 real production sales are preserved (confirmed count=20, test_sales_left=0 after cleanup).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_multi_broker.py",
+    "/app/test_reports/pytest/pytest_multi_broker.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 1399 lines (grew from 1283 in iter 4). The multi-broker logic (_normalize_brokers, _partner_share, _broker_pool, ranking split loop) is clean, but the file is overdue for a split into routers (sales/stats/ranking/auth/loteamentos). Recurring from iter 3-4.",
+    "_normalize_brokers silently drops rows with empty name and does NOT validate that sum(split_pct) == 100. The backend accepts e.g. 60/30 (=90) or 70/50 (=120) and will scale by `total or 100` in _partner_share — this can lead to misleading reports if a client bypasses the UI validator. Recommend 400 if sum != 100 (±0.01 tolerance) on master create/update.",
+    "Ranking groups by broker name string (as documented). Note: _normalize_brokers stores the exact name typed by the master (e.g. 'Carlão'); if master mistypes 'carlao' it will create a NEW ranking row that still maps to the same owner_id. Consider normalizing the stored broker.name to the resolved corretor's canonical war_name/full_name when owner_id resolves.",
+    "update_sale (PUT) when brokers list is empty sets `broker_ids: []` but does NOT clear owner_id — the sale keeps its previous owner. For a master-driven edit this is likely intentional, but should be documented.",
+    "/api/stats for corretor sums `(s.sale_value) * share` across s in list_sales(scope). This is correct, but note that list_sales already filters by _scope_query so corretor sees the sale once; the proportional math is applied only via `share` — good. No double-counting observed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_multi_broker.py (new; 7 tests across 5 test classes; uses cookie-based corretor login, autouse-style cleanup fixture per test)"
+  ],
+  "success_rate": { "backend": "100% (7/7 new multi-broker tests; prior 57 tests not re-run but untouched)", "frontend": "100% of multi-broker flow under test" },
+  "test_credentials": "Master cookie session_token=qa_session_vinicius_001 or Authorization: Bearer qa_session_vinicius_001. Corretor Carlão: carlos.teste@brilhantes.com / 12345678900 — login sets httpOnly cookie access_token=<jwt>; the token can also be used as Bearer.",
+  "seed_data_creation": "No persistent seed. Every test sale created was deleted (either by the created_sales fixture teardown via DELETE /api/sales/{id} or by an explicit cleanup pass in the Playwright script). Verified post-run: /api/sales returns exactly 20 sales, 0 of them with property_name starting with 'TEST'.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_multi_broker.py -v`. The corretor login endpoint returns the JWT only as httpOnly cookie `access_token` — any new test fixture must read it from session.cookies, not from response.json(). Partners used: war_names 'Carlão' (carlos.teste@brilhantes.com) and 'Aninha' (pre-existing corretor). UI testids: sale-form-add-broker, broker-row-N, sale-form-broker-select-N, sale-form-broker-pct-N, sale-form-remove-broker-N, sale-form-split-sum, sale-form-submit-button (disabled when sum(pct) != 100). Sale value input testid is sale-form-value-input (NOT sale-form-sale-value).",
+  "rca of the issue": "No bugs reproduced. The feature works as specified: backend _normalize_brokers resolves names → owner_ids, create/update_sale set broker_ids and combined broker_name, _partner_share scales corretor /api/stats proportionally, and the ranking loop distributes volume/comissao/comissao_corretor by each broker's split share. Minor pre-existing behaviors (name-string grouping in ranking, no server-side 100%-sum enforcement) are documented under critical_code_review_comments but are not regressions for this iteration."
+}

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import RankingCard from "@/components/RankingCard";
+import GoalsCard from "@/components/GoalsCard";
 import SalesSection from "@/components/SalesSection";
 import SaleFormDialog from "@/components/SaleFormDialog";
 import InstallmentsDialog from "@/components/InstallmentsDialog";
@@ -39,10 +40,12 @@ export default function CorretorDashboard() {
   const salesQ = useQuery({ queryKey: ["sales", params], queryFn: async () => (await api.get("/sales", { params })).data });
   const statsQ = useQuery({ queryKey: ["stats", params], queryFn: async () => (await api.get("/stats", { params })).data });
   const rankingQ = useQuery({ queryKey: ["ranking", params], queryFn: async () => (await api.get("/ranking", { params })).data });
+  const goalsQ = useQuery({ queryKey: ["goals", params], queryFn: async () => (await api.get("/goals", { params })).data });
   const loteamentosQ = useQuery({ queryKey: ["loteamentos"], queryFn: async () => (await api.get("/loteamentos")).data });
   const loteamentos = useMemo(() => (loteamentosQ.data || []).map((l) => l.name), [loteamentosQ.data]);
+  const clientsQ = useQuery({ queryKey: ["clients"], queryFn: async () => (await api.get("/clients")).data });
 
-  const invalidateAll = () => ["sales", "stats", "ranking"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  const invalidateAll = () => ["sales", "stats", "ranking", "clients"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 
   const createMut = useMutation({
     mutationFn: (payload) => (editing ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload)),
@@ -139,13 +142,13 @@ export default function CorretorDashboard() {
               onOpenAttachments={(x) => setAttachSale(x)}
             />
           </div>
-          <div><RankingCard ranking={rankingQ.data} /></div>
+          <div className="space-y-6"><RankingCard ranking={rankingQ.data} /><GoalsCard goals={goalsQ.data} /></div>
         </div>
       </main>
 
       <SaleFormDialog open={formOpen} onOpenChange={(v) => { setFormOpen(v); if (!v) setEditing(null); }}
         onSubmit={(p) => createMut.mutate(p)} initial={editing} brokers={[display]}
-        loteamentos={loteamentos} lockBroker lockBrokerName={display} />
+        loteamentos={loteamentos} clients={clientsQ.data || []} lockBroker lockBrokerName={display} />
       <InstallmentsDialog open={!!instSale} onOpenChange={(v) => { if (!v) setInstSale(null); }} sale={instSale}
         onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })} />
       <AttachmentsDialog open={!!attachSale} onOpenChange={(v) => { if (!v) setAttachSale(null); }} sale={attachSale} />

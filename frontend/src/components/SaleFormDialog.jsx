@@ -44,7 +44,7 @@ function initialBrokers(initial, lockBroker, lockBrokerName) {
   return [{ name: "", split_pct: 100 }];
 }
 
-export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, brokers, loteamentos, lockBroker, lockBrokerName }) {
+export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, brokers, loteamentos, clients, lockBroker, lockBrokerName }) {
   const [form, setForm] = useState(empty);
   const [numParcelas, setNumParcelas] = useState(1);
 
@@ -65,6 +65,18 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
   }, [open, initial, lockBroker, lockBrokerName]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const onClientNameChange = (val) => {
+    setForm((f) => {
+      const match = (clients || []).find((c) => c.name.toLowerCase() === val.trim().toLowerCase());
+      const next = { ...f, client_name: val };
+      if (match) {
+        if (!f.client_phone) next.client_phone = match.phone || "";
+        if (!f.client_email) next.client_email = match.email || "";
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     const sv = parseFloat(form.sale_value);
@@ -283,8 +295,11 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
             <div className="grid sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <Label>Nome do cliente</Label>
-                <Input data-testid="sale-form-client-input" value={form.client_name}
-                  onChange={(e) => set("client_name", e.target.value)} placeholder="Nome do comprador" />
+                <Input data-testid="sale-form-client-input" list="clients-list" value={form.client_name}
+                  onChange={(e) => onClientNameChange(e.target.value)} placeholder="Nome do comprador" />
+                <datalist id="clients-list">
+                  {(clients || []).map((c) => <option key={c.name} value={c.name} />)}
+                </datalist>
               </div>
               <div className="space-y-1.5">
                 <Label>Número do cliente</Label>

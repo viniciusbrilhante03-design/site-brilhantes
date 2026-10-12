@@ -78,14 +78,29 @@ entrou e o que falta entrar. Controle datado.
 - InstallmentsDialog vira "Comissão a receber" (Recebida/A receber/Vencida). Parcelas demo legadas (lote) zeradas.
 - Testes: 5/5 backend + fluxos frontend 100%.
 
-## Próximos (ordem de prioridade do cliente — NÃO implementados ainda)
-1. Múltiplos corretores/parceria por venda (split %, soma 100%) refletindo comissão/ranking/VGV.
+## Próximos (ordem de prioridade do cliente)
+1. ✅ (iter 6) Múltiplos corretores/parceria por venda (split %, soma 100%) refletindo comissão/ranking/VGV.
 2. Cadastro+histórico de clientes (autocomplete, compras por cliente).
 3. Metas (coletiva e individual) + módulo Comissões dedicado com projeção.
 4. Notificações (nova venda, ranking, incentivo de meta).
 5. Ranking por período (semana/mês/ano/custom) e por comissão; grupos/duplas.
 6. Filtros de vendas; status da venda (reserva/efetivada/cancelada/distrato); duplicidade; auditoria.
 7. Importação inteligente (IA) de relatórios das construtoras com prévia.
+
+### Iteração 6 (2026-06 fork) — Parceria / múltiplos corretores (item 1/19) ✅
+- Venda agora aceita **vários corretores** via `brokers:[{name, split_pct}]` (model SaleBroker + SaleCreate.brokers).
+- **Split de comissão do corretor** entre parceiros; soma validada = 100% no backend (_normalize_brokers) e na UI.
+- `broker_name` combinado ("A + B"); `broker_ids` para escopo; `owner_id` = 1º parceiro.
+- **Escopo do corretor** ($or owner_id/broker_ids): cada parceiro vê a venda e seu share proporcional em /api/stats.
+- **Ranking** e **lista de equipe** distribuem volume/comissão por share; qtd +1 por participação.
+- SaleFormDialog: linhas de corretor + % + valor ao vivo + "Adicionar parceiro" (corretor segue travado a si mesmo).
+- Testes: 7/7 backend (test_multi_broker.py) + fluxo frontend 100% (iteration_5.json).
+
+### Iteração 7 (2026-06 fork) — Clientes: autocomplete + histórico (item 2/19) ✅
+- GET /api/clients (escopado): agrega vendas por nome de cliente → telefone, e-mail, qtd compras, VGV, última data e lista de compras (lote/quadra/data/valor/corretor).
+- SaleFormDialog: autocomplete do nome do cliente (datalist) + **preenche telefone/e-mail** ao reconhecer cliente existente.
+- Novo botão "Clientes" no cabeçalho do gestor → ClientsDialog com busca e histórico expansível por cliente.
+- Corretor também tem autocomplete (vê só os próprios clientes).
 
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
