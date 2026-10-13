@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Bell, CheckCheck, TrendingUp, Target, Receipt } from "lucide-react";
+import { Bell, CheckCheck, TrendingUp, Target, Receipt, Cake, AlertTriangle } from "lucide-react";
 
-const iconFor = (t) => (t === "goal" ? Target : t === "ranking" ? TrendingUp : Receipt);
+const iconFor = (t) => (t === "goal" ? Target : t === "ranking" ? TrendingUp : t === "birthday" ? Cake : t === "installment" ? AlertTriangle : Receipt);
 
 function timeAgo(iso) {
   const d = new Date(iso);

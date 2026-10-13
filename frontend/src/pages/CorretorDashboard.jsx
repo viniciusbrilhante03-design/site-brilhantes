@@ -18,6 +18,7 @@ import InstallmentsDialog from "@/components/InstallmentsDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import BirthdaysDialog from "@/components/BirthdaysDialog";
+import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import NotificationsBell from "@/components/NotificationsBell";
 import { celebrate, randomPhrase } from "@/lib/celebrate";
 import { LogOut, Moon, Sun, CalendarDays, KeyRound, TrendingUp, Wallet, Clock, Hash, UserRound, Cake } from "lucide-react";
@@ -38,6 +39,8 @@ export default function CorretorDashboard() {
   const [attachSale, setAttachSale] = useState(null);
   const [pwdOpen, setPwdOpen] = useState(false);
   const [birthdaysOpen, setBirthdaysOpen] = useState(false);
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupPayload, setDupPayload] = useState(null);
 
   const params = useMemo(() => (month === ALL ? { year } : { month, year }), [month, year]);
 
@@ -54,6 +57,11 @@ export default function CorretorDashboard() {
   const createMut = useMutation({
     mutationFn: (payload) => (editing?.id ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload)),
     onSuccess: () => { invalidateAll(); setFormOpen(false); const wasEdit = editing?.id; setEditing(null); if (wasEdit) { toast.success("Venda atualizada!"); } else { celebrate(); toast.success(randomPhrase(), { description: "🎉 Venda cadastrada com sucesso!" }); } },
+    onError: (err, variables) => { if (err?.response?.status === 409 && !editing?.id) { setDupPayload(variables); setDupOpen(true); } else { toast.error("Erro ao salvar venda."); } },
+  });
+  const forceCreateMut = useMutation({
+    mutationFn: (payload) => api.post("/sales?force=true", payload),
+    onSuccess: () => { setDupOpen(false); setDupPayload(null); invalidateAll(); setFormOpen(false); setEditing(null); celebrate(); toast.success(randomPhrase(), { description: "🎉 Venda cadastrada com sucesso!" }); },
     onError: () => toast.error("Erro ao salvar venda."),
   });
   const deleteMut = useMutation({ mutationFn: (id) => api.delete(`/sales/${id}`), onSuccess: () => { invalidateAll(); toast.success("Venda movida para o histórico."); } });
@@ -162,6 +170,12 @@ export default function CorretorDashboard() {
       <AttachmentsDialog open={!!attachSale} onOpenChange={(v) => { if (!v) setAttachSale(null); }} sale={attachSale} />
       <ChangePasswordDialog open={pwdOpen} onOpenChange={setPwdOpen} />
       <BirthdaysDialog open={birthdaysOpen} onOpenChange={setBirthdaysOpen} />
+      <DuplicateWarningDialog
+        open={dupOpen}
+        onOpenChange={(v) => { setDupOpen(v); if (!v) setDupPayload(null); }}
+        payload={dupPayload}
+        onConfirm={() => dupPayload && forceCreateMut.mutate(dupPayload)}
+      />
     </div>
   );
 }

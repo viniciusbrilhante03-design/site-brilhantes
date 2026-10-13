@@ -551,8 +551,34 @@ async def _normalize_brokers(payload: dict):
     return resolved, ids
 
 
+async def _audit(action: str, sale: dict, user: dict, detail: str = ""):
+    await db.sale_audit.insert_one({
+        "id": f"aud_{uuid.uuid4().hex[:10]}", "action": action,
+        "sale_id": sale.get("id"), "property_name": sale.get("property_name"),
+        "quadra": sale.get("quadra"), "lote": sale.get("lote"),
+        "client_name": sale.get("client_name"), "broker_name": sale.get("broker_name"),
+        "sale_value": sale.get("sale_value"), "detail": detail,
+        "by": _display(user), "by_id": user.get("user_id"),
+        "at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+async def _find_duplicate(payload: dict):
+    def nz(x):
+        return (str(x) if x is not None else "").strip().lower()
+    docs = await db.sales.find({"sale_date": payload.get("sale_date")}, {"_id": 0}).to_list(2000)
+    for d in docs:
+        if (nz(d.get("property_name")) == nz(payload.get("property_name"))
+                and nz(d.get("quadra")) == nz(payload.get("quadra"))
+                and nz(d.get("lote")) == nz(payload.get("lote"))
+                and nz(d.get("client_name")) == nz(payload.get("client_name"))
+                and nz(d.get("broker_name")) == nz(payload.get("broker_name"))):
+            return d
+    return None
+
+
 @api_router.post("/sales", response_model=Sale)
-async def create_sale(data: SaleCreate, user: dict = Depends(get_current_user)):
+async def create_sale(data: SaleCreate, force: bool = False, user: dict = Depends(get_current_user)):
     payload = data.model_dump()
     if user.get("role") == "corretor":
         if not await _loteamento_exists(payload["property_name"]):
@@ -570,9 +596,14 @@ async def create_sale(data: SaleCreate, user: dict = Depends(get_current_user)):
             owner_name = resolved[0]["name"]
         else:
             owner_id, owner_name = user["user_id"], _display(user)
+    if not force:
+        dup = await _find_duplicate(payload)
+        if dup:
+            raise HTTPException(status_code=409, detail="Já existe uma venda igual (mesmo cliente, loteamento, quadra, lote, data e corretor). Deseja salvar mesmo assim?")
     sale = Sale(**payload, user_id=user["user_id"], owner_id=owner_id,
                 owner_name=owner_name, broker_ids=broker_ids)
     await db.sales.insert_one(sale.model_dump())
+    await _audit("create", sale.model_dump(), user)
     await _post_sale_notifications(sale.model_dump())
     return sale
 
@@ -600,6 +631,7 @@ async def update_sale(sale_id: str, data: SaleCreate, user: dict = Depends(get_c
         else:
             extra = {"broker_ids": []}
     await db.sales.update_one({"id": sale_id}, {"$set": {**payload, **extra}})
+    await _audit("update", {**existing, **payload, **extra}, user)
     return {**existing, **payload, **extra}
 
 
@@ -613,6 +645,7 @@ async def delete_sale(sale_id: str, user: dict = Depends(get_current_user)):
     sale["deleted_by_name"] = _display(user)
     await db.sales_history.insert_one(sale)
     await db.sales.delete_one({"id": sale_id})
+    await _audit("delete", sale, user)
     return {"ok": True}
 
 
@@ -654,16 +687,20 @@ async def transfer_sale(sale_id: str, request: Request, user: dict = Depends(req
         "broker_ids": [oid] if oid else [],
     }
     await db.sales.update_one({"id": sale_id}, {"$set": upd})
-    await db.sale_audit.insert_one({
-        "id": f"aud_{uuid.uuid4().hex[:10]}", "sale_id": sale_id, "action": "transfer",
-        "from_broker": sale.get("broker_name"), "to_broker": new_name,
-        "by": _display(user), "at": datetime.now(timezone.utc).isoformat(),
-    })
+    await _audit("transfer", {**sale, **upd}, user,
+                 detail=f"De {sale.get('broker_name')} para {new_name}")
     if oid:
         await _notify(oid, "new_sale",
                       f"Uma venda foi transferida para você: {sale.get('property_name')}.",
                       {"sale_id": sale_id})
     return {**sale, **upd}
+
+
+@api_router.get("/audit")
+async def list_audit(user: dict = Depends(require_master)):
+    docs = await db.sale_audit.find({}, {"_id": 0}).to_list(1000)
+    docs.sort(key=lambda d: d.get("at", ""), reverse=True)
+    return docs[:200]
 
 
 # ---------------- Brokers (corretores) ----------------
@@ -1036,16 +1073,17 @@ async def _post_sale_notifications(sale: dict):
             for g in goals:
                 prog = await _goal_progress(g, all_sales)
                 notified = set(g.get("notified_levels", []))
-                level = None
-                if prog["pct"] >= 100 and 100 not in notified:
-                    level = 100
-                elif prog["pct"] >= 90 and 90 not in notified:
-                    level = 90
-                if level:
-                    mt = "VGV" if g.get("metric") == "vgv" else "vendas"
-                    txt = (f"🎯 Meta de {mt} batida! Parabéns!" if level == 100
-                           else f"Você está a {prog['pct']}% da sua meta de {mt}. Falta pouco!")
-                    await _notify(oid, "goal", txt)
+                mt = "VGV" if g.get("metric") == "vgv" else "vendas"
+                crossed = [lv for lv in (100, 90, 75, 50) if prog["pct"] >= lv and lv not in notified]
+                if crossed:
+                    level = crossed[0]
+                    phrases = {
+                        100: f"🎯 Meta de {mt} batida! Parabéns! 🎉",
+                        90: f"Você está a {prog['pct']}% da meta de {mt}. Falta pouco! 🔥",
+                        75: f"Já são {prog['pct']}% da meta de {mt}. Continue firme! 💪",
+                        50: f"Metade da meta de {mt} alcançada ({prog['pct']}%)! 🚀",
+                    }
+                    await _notify(oid, "goal", phrases[level])
                     notified.add(level)
                     await db.goals.update_one({"id": g["id"]}, {"$set": {"notified_levels": list(notified)}})
     except Exception as e:
@@ -1210,6 +1248,64 @@ async def cron_birthdays(background_tasks: BackgroundTasks,
             return {"ok": True, "duplicate": True}
         await db.cron_runs.insert_one({"run_id": run_id, "at": datetime.now(timezone.utc).isoformat()})
     background_tasks.add_task(_process_birthdays)
+    return {"ok": True}
+
+
+async def _process_installments():
+    try:
+        now = _br_now()
+        today_iso = now.date().isoformat()
+        soon_iso = (now.date() + timedelta(days=3)).isoformat()
+        masters = await db.users.find({"role": "master"}, {"_id": 0}).to_list(50)
+        master_ids = [m["user_id"] for m in masters]
+        sales = await db.sales.find({"parcelado": True}, {"_id": 0}).to_list(5000)
+        for s in sales:
+            insts = s.get("installments") or []
+            changed = False
+            owner_ids = set(s.get("broker_ids") or [])
+            if s.get("owner_id"):
+                owner_ids.add(s["owner_id"])
+            targets = list(dict.fromkeys(list(owner_ids) + master_ids))
+            lot = s.get("property_name") or "loteamento"
+            for inst in insts:
+                if inst.get("received"):
+                    continue
+                due = inst.get("due_date") or ""
+                val = _fmt_brl(inst.get("value", 0))
+                if due and due < today_iso and not inst.get("notified_overdue"):
+                    for t in targets:
+                        await _notify(t, "installment",
+                                      f"⚠️ Parcela de comissão vencida: {lot} — venceu em {_fmt_date(due)} ({val}).",
+                                      {"sale_id": s.get("id")})
+                    inst["notified_overdue"] = True
+                    changed = True
+                elif due and today_iso <= due <= soon_iso and not inst.get("notified_due_soon"):
+                    for t in targets:
+                        await _notify(t, "installment",
+                                      f"⏰ Parcela de comissão vence em {_fmt_date(due)}: {lot} ({val}).",
+                                      {"sale_id": s.get("id")})
+                    inst["notified_due_soon"] = True
+                    changed = True
+            if changed:
+                await db.sales.update_one({"id": s.get("id")}, {"$set": {"installments": insts}})
+    except Exception as e:
+        logger.warning(f"installments cron failed: {e}")
+
+
+@api_router.post("/cron/installments")
+async def cron_installments(background_tasks: BackgroundTasks,
+                            authorization: Optional[str] = Header(None),
+                            x_webhook_id: Optional[str] = Header(None)):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    if not WEBHOOK_CRON_SECRET or not token or not hmac.compare_digest(token, WEBHOOK_CRON_SECRET):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    run_id = x_webhook_id or ""
+    if run_id:
+        if await db.cron_runs.find_one({"run_id": run_id}):
+            return {"ok": True, "duplicate": True}
+        await db.cron_runs.insert_one({"run_id": run_id, "at": datetime.now(timezone.utc).isoformat()})
+    background_tasks.add_task(_process_installments)
     return {"ok": True}
 
 

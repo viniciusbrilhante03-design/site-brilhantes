@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { brl, formatDateBR } from "@/lib/format";
 import GroupsManager from "@/components/GroupsManager";
-import { Users, Copy, Phone, Mail, IdCard, Link2, History, Camera, Plus, Pencil, Trash2, ArrowLeft, KeyRound } from "lucide-react";
+import { Users, Copy, Phone, Mail, IdCard, Link2, History, Camera, Plus, Pencil, Trash2, ArrowLeft, KeyRound, ScrollText, ArrowRightLeft, FilePlus2, FileX2 } from "lucide-react";
 
 function fileToDataURL(file, max = 256) {
   return new Promise((resolve, reject) => {
@@ -111,6 +111,7 @@ export default function TeamDialog({ open, onOpenChange }) {
   const teamQ = useQuery({ queryKey: ["corretores"], queryFn: async () => (await api.get("/corretores")).data, enabled: open });
   const histQ = useQuery({ queryKey: ["history"], queryFn: async () => (await api.get("/history")).data, enabled: open });
   const lotQ = useQuery({ queryKey: ["loteamentos"], queryFn: async () => (await api.get("/loteamentos")).data, enabled: open });
+  const auditQ = useQuery({ queryKey: ["audit"], queryFn: async () => (await api.get("/audit")).data, enabled: open });
 
   const activeMut = useMutation({
     mutationFn: ({ id, active }) => api.patch(`/corretores/${id}/active`, { active }),
@@ -153,6 +154,7 @@ export default function TeamDialog({ open, onOpenChange }) {
             <TabsTrigger value="duplas" data-testid="tab-duplas"><Users className="h-4 w-4 mr-1" /> Duplas</TabsTrigger>
             <TabsTrigger value="loteamentos" data-testid="tab-loteamentos">Loteamentos</TabsTrigger>
             <TabsTrigger value="historico" data-testid="tab-historico"><History className="h-4 w-4 mr-1" /> Histórico</TabsTrigger>
+            <TabsTrigger value="auditoria" data-testid="tab-auditoria"><ScrollText className="h-4 w-4 mr-1" /> Auditoria</TabsTrigger>
           </TabsList>
 
           <TabsContent value="equipe" className="space-y-3 mt-3">
@@ -245,6 +247,34 @@ export default function TeamDialog({ open, onOpenChange }) {
                   <div className="text-right text-xs text-muted-foreground">Excluída por<br /><span className="font-medium text-foreground">{h.deleted_by_name || "—"}</span></div>
                 </div>
               ))}
+          </TabsContent>
+
+          <TabsContent value="auditoria" className="space-y-2 mt-3">
+            <p className="text-xs text-muted-foreground">Registro de quem cadastrou, editou, transferiu ou excluiu cada venda.</p>
+            {auditQ.isLoading ? <p className="text-sm text-muted-foreground py-6 text-center">Carregando...</p>
+              : (auditQ.data || []).length === 0 ? <p className="text-sm text-muted-foreground py-8 text-center">Nenhum registro ainda.</p>
+              : (auditQ.data || []).map((a, i) => {
+                const act = { create: "Cadastrou", update: "Editou", transfer: "Transferiu", delete: "Excluiu" }[a.action] || a.action;
+                const AIcon = a.action === "transfer" ? ArrowRightLeft : a.action === "delete" ? FileX2 : a.action === "create" ? FilePlus2 : Pencil;
+                const tone = a.action === "delete" ? "text-destructive" : a.action === "transfer" ? "text-[hsl(var(--gold))]" : a.action === "create" ? "text-[hsl(var(--emerald))]" : "text-primary";
+                const when = a.at ? new Date(a.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+                const ql = [a.quadra && `Qd ${a.quadra}`, a.lote && `Lt ${a.lote}`].filter(Boolean).join(" · ");
+                return (
+                  <div key={i} data-testid={`audit-${i}`} className="rounded-lg border border-border/60 p-3 flex items-start gap-3 text-sm">
+                    <AIcon className={`h-4 w-4 mt-0.5 shrink-0 ${tone}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">
+                        <span className={tone}>{act}</span> · {a.property_name || "—"}{ql ? ` · ${ql}` : ""}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {[a.client_name, a.broker_name].filter(Boolean).join(" · ")}
+                        {a.detail ? ` — ${a.detail}` : ""}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">por <span className="font-medium text-foreground">{a.by || "—"}</span> · {when}</div>
+                    </div>
+                  </div>
+                );
+              })}
           </TabsContent>
         </Tabs>
       </DialogContent>

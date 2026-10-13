@@ -28,6 +28,7 @@ import { celebrate, randomPhrase } from "@/lib/celebrate";
 import ClientsDialog from "@/components/ClientsDialog";
 import BirthdaysDialog from "@/components/BirthdaysDialog";
 import TransferSaleDialog from "@/components/TransferSaleDialog";
+import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import GoalsCard from "@/components/GoalsCard";
 import GoalsDialog from "@/components/GoalsDialog";
 
@@ -55,6 +56,8 @@ export default function Dashboard() {
   const [goalsOpen, setGoalsOpen] = useState(false);
   const [birthdaysOpen, setBirthdaysOpen] = useState(false);
   const [transferSale, setTransferSale] = useState(null);
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupPayload, setDupPayload] = useState(null);
 
   const params = useMemo(() => {
     const p = { year };
@@ -109,6 +112,14 @@ export default function Dashboard() {
     return Array.from(set);
   }, [corretoresQ.data, salesQ.data]);
 
+  const afterCreate = () => {
+    invalidateAll();
+    setFormOpen(false);
+    setEditing(null);
+    celebrate();
+    toast.success(randomPhrase(), { description: "🎉 Venda cadastrada com sucesso!" });
+  };
+
   const createMut = useMutation({
     mutationFn: (payload) =>
       editing?.id ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload),
@@ -120,6 +131,19 @@ export default function Dashboard() {
       if (wasEdit) toast.success("Venda atualizada!");
       else { celebrate(); toast.success(randomPhrase(), { description: "🎉 Venda cadastrada com sucesso!" }); }
     },
+    onError: (err, variables) => {
+      if (err?.response?.status === 409 && !editing?.id) {
+        setDupPayload(variables);
+        setDupOpen(true);
+      } else {
+        toast.error("Erro ao salvar venda.");
+      }
+    },
+  });
+
+  const forceCreateMut = useMutation({
+    mutationFn: (payload) => api.post("/sales?force=true", payload),
+    onSuccess: () => { setDupOpen(false); setDupPayload(null); afterCreate(); },
     onError: () => toast.error("Erro ao salvar venda."),
   });
 
@@ -316,6 +340,12 @@ export default function Dashboard() {
         onConfirm={(id, broker_name) => transferMut.mutate({ id, broker_name })}
       />
       <GoalsDialog open={goalsOpen} onOpenChange={setGoalsOpen} />
+      <DuplicateWarningDialog
+        open={dupOpen}
+        onOpenChange={(v) => { setDupOpen(v); if (!v) setDupPayload(null); }}
+        payload={dupPayload}
+        onConfirm={() => dupPayload && forceCreateMut.mutate(dupPayload)}
+      />
     </div>
   );
 }
