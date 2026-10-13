@@ -180,6 +180,23 @@ entrou e o que falta entrar. Controle datado.
 - PENDENTE p/ próximo lote: #4 transferência de venda (gestor), #6 textos de notificação (qtd/ranking/comissão a vencer),
   #7 faixas coloridas + frases nas metas, #8 esconder VGV TOTAL da imobiliária para o corretor. #10/#11 já cobertos pela importação com IA.
 
+### Iteração 17 (2026-06 fork) — Lote 2 (itens #4, #6, #7, #8, #9) ✅
+- **#4 Transferência de venda (gestor)**: POST /api/sales/{id}/transfer (master) troca o corretor da venda
+  sem duplicar (brokers vira único, owner_id/owner_name/broker_ids atualizados), grava sale_audit e notifica o
+  novo corretor. UI: botão btn-transfer-<id> na tabela → TransferSaleDialog (Select de corretores).
+- **#8 Esconder VGV total do corretor**: stats() devolve vgv_geral/qtd_geral = None para role=corretor; card
+  "VGV Geral (imobiliária)" removido do painel do corretor (restam 5 KPIs). Corretor mantém ranking/comparação.
+- **#6 Notificações personalizadas**: nova venda → "X vendeu 1 lote no <loteamento>." para gestor(es) + todos os
+  corretores (menos quem vendeu). Subir no ranking → "Você subiu para Nº no ranking de <mês>! 🚀" para o corretor
+  e aviso aos pares/gestor. Metas 90%/100% mantidas.
+- **#7 Metas com faixas**: GoalsCard com banda por % — 🟢 ≥90 "QUASE LÁ!" / ≥100 "META BATIDA! 🎉" (emerald),
+  🟡 60–89 "EM EVOLUÇÃO" (amber), 🔴 0–59 "PRECISA ACELERAR" (rose); barra colorida + frase (goal-phrase-<id>).
+- **#9 Aniversariantes**: GET /api/clients/birthdays?month= (escopado) + BirthdaysDialog (botão btn-open-birthdays
+  em ambos os painéis) com seletor de mês e corretor responsável. Cron diário .emergent/crons.yml → POST
+  /api/cron/birthdays (Bearer WEBHOOK_CRON_SECRET, ack 2xx + background _process_birthdays): avisa no dia do
+  aniversário e, no dia 1, a lista do mês, para o corretor responsável + gestor.
+- Testes: 10/10 backend (test_lote2.py) + fluxos UI 100% (iteration_11.json). Dados limpos (20 vendas / 0 metas).
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

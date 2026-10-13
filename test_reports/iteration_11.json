@@ -1,0 +1,26 @@
+{
+  "summary": "Lote 2 (Msg 279) end-to-end verificado. Backend pytest 10/10 verdes em /app/backend/tests/test_lote2.py cobrindo: #8 vgv_geral=None para corretor e numérico para gestor; #9 GET /api/clients/birthdays (gestor+corretor) e POST /api/cron/birthdays (401 sem secret, 200 com secret); #4 POST /api/sales/{id}/transfer sem duplicação (count antes==depois, broker_name/owner_id atualizados) + 401/403 para corretor; #6 notificação 'X vendeu 1 lote no <loteamento>' para gestor após POST /api/sales do corretor. UI validada em preview: Corretor sem card 'VGV Geral', 5 KPIs corretos; btn-open-birthdays + birthdays-dialog + birthdays-month-select ok tanto no Corretor quanto no Gestor; 20 botões btn-transfer-<saleId> na tabela do gestor, abrem transfer-sale-dialog com transfer-broker-select e transfer-confirm-btn; goal-phrase-<id> renderiza '🟢 META BATIDA! 🎉' em verde para VGV company 100%. Dados de teste limpos ao final (20 vendas / 0 metas).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_lote2.py",
+    "/app/test_reports/pytest/iter11.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "transfer_sale(): substitui brokers por owner único (split 100%) e grava sale_audit — correto para 'transferência' (não duplica). Envia _notify ao novo owner apenas; considerar também notificar o corretor origem (opcional).",
+    "stats(): oculta vgv_geral apenas no response (None) para role=='corretor'; demais campos (total_vendido, comissao_corretor, etc.) continuam escopo do próprio corretor via list_sales. OK.",
+    "_post_sale_notifications(): mensagem padronizada 'X vendeu 1 lote no <loteamento>.' chega para gestores e demais corretores; sobe-ranking gera notificação adicional 'Você subiu para Nº...' e também avisa os pares. Correto.",
+    "GoalsCard band(): faixas 100/90/60/0 com rótulos e cores (emerald/amber/rose) conforme spec; data-testid='goal-phrase-<id>' presente.",
+    "BirthdaysDialog: usa react-query enabled:open, mês default = mês atual, lida com vazio com empty-state amigável.",
+    "TransferSaleDialog: filtra o corretor atual da lista de destino e desabilita Transferir até escolher — bom UX."
+  ],
+  "updated_files": ["/app/backend/tests/test_lote2.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Master cookie session_token=qa_session_vinicius_001 (ou Bearer). Corretor: carlos.teste@brilhantes.com / 12345678900. Cron secret: Bearer b9f3c1a27e4d48f6a0c5d2e8b7146f93aa21c64d9e0f3b5c7d81a2e4f6097c3b1.",
+  "seed_data_creation": "Meta temporária goal_7cc8c7619db9 (company VGV 2026-06) criada para validar goal-phrase e excluída ao final. Vendas de teste criadas pelos pytest são apagadas no finally. Estado final: 20 vendas / 0 metas.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Rode pytest /app/backend/tests/test_lote2.py -p no:xdist -o addopts='' para evitar flakes de contagem entre testes paralelos (os testes checam count antes/depois na transferência). Para validar o goal-phrase na UI, crie uma meta via POST /api/goals, filtre o mês no header e procure [data-testid^='goal-phrase-']. Fluxos Birthdays e Transfer da UI usam Radix Select — use force=True nos cliques e get_by_role('option') para selecionar itens.",
+  "rca of the issue": "N/A — todos os 5 itens do Lote 2 funcionando conforme spec."
+}
