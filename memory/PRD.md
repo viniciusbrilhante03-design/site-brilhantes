@@ -197,6 +197,20 @@ entrou e o que falta entrar. Controle datado.
   aniversário e, no dia 1, a lista do mês, para o corretor responsável + gestor.
 - Testes: 10/10 backend (test_lote2.py) + fluxos UI 100% (iteration_11.json). Dados limpos (20 vendas / 0 metas).
 
+### Iteração 18 (2026-06 fork) — Lote 3 (auditoria, duplicidade, metas, parcelas) ✅
+- **Auditoria**: helper _audit grava create/update/delete/transfer em db.sale_audit; GET /api/audit (master);
+  aba "Auditoria" no TeamDialog mostrando ação, venda, autor e data/hora.
+- **Aviso de duplicidade**: create_sale aceita ?force=true; sem force, se já existir venda igual
+  (cliente+loteamento+quadra+lote+data+corretor) retorna 409. Frontend abre DuplicateWarningDialog
+  ("Salvar mesmo assim") que reenvia com force=true. Vale para gestor e corretor; não afeta edição/importação.
+- **Alertas de meta multinível**: _post_sale_notifications notifica ao cruzar 50/75/90/100% (frases motivacionais),
+  deduplicado via goal.notified_levels.
+- **Parcela vencida/vencendo**: _process_installments + POST /api/cron/installments (cron diário) notifica
+  corretor(es) responsáveis + gestor sobre parcelas de comissão vencidas e vencendo em 3 dias; marca
+  notified_overdue/notified_due_soon por parcela para não repetir. NotificationsBell ganhou ícones birthday/installment.
+- crons.yml: 2 crons (birthdays-daily 12:00 UTC, installments-daily 12:30 UTC).
+- Testes: duplicidade 409→force, /api/audit, cron parcelas (401/200) validados via curl. Publicado em produção.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
