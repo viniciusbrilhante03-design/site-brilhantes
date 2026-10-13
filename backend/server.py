@@ -1399,6 +1399,13 @@ COLMAP = {
     "entrada": "entrada", "valor entrada": "entrada", "valor de entrada": "entrada",
     "parcelas": "num_parcelas", "numero de parcelas": "num_parcelas", "n parcelas": "num_parcelas",
     "qtd parcelas": "num_parcelas",
+    "cpf": "client_cpf", "cpf cliente": "client_cpf", "cpf do cliente": "client_cpf",
+    "cnpj/cpf": "client_cpf", "cpf/cnpj": "client_cpf", "documento": "client_cpf", "doc": "client_cpf",
+    "data de nascimento": "client_birthdate", "data nascimento": "client_birthdate",
+    "nascimento": "client_birthdate", "dt nascimento": "client_birthdate", "dt. nascimento": "client_birthdate",
+    "data nasc": "client_birthdate", "data nasc.": "client_birthdate", "data de nasc": "client_birthdate",
+    "data de nasc.": "client_birthdate", "dt nasc": "client_birthdate", "dt. nasc": "client_birthdate",
+    "aniversario": "client_birthdate", "nascimento cliente": "client_birthdate",
 }
 
 
@@ -1455,6 +1462,15 @@ def parse_date(v):
     except (ValueError, IndexError):
         return today
     return today
+
+
+def parse_date_opt(v):
+    """Igual a parse_date, mas devolve '' quando vazio (para data de nascimento)."""
+    s = _clean(v)
+    if not s:
+        return ""
+    out = parse_date(s)
+    return out
 
 
 def _add_months(iso, n):
@@ -1532,7 +1548,9 @@ def build_sale_from_row(d, user_id):
     return Sale(
         property_name=prop, quadra=_clean(d.get("quadra")), lote=_clean(d.get("lote")),
         client_name=_clean(d.get("client_name")), client_phone=_clean(d.get("client_phone")),
-        client_email=_clean(d.get("client_email")), broker_name=_clean(d.get("broker_name")) or "—",
+        client_email=_clean(d.get("client_email")),
+        client_cpf=_only_digits(_clean(d.get("client_cpf"))), client_birthdate=parse_date_opt(d.get("client_birthdate")),
+        broker_name=_clean(d.get("broker_name")) or "—",
         brokers=[{"name": _clean(d.get("broker_name")) or "—", "split_pct": 100.0, "owner_id": None}],
         sale_date=date, sale_value=sv, commission_rate=rate, commission_value=cval,
         broker_split=60.0, broker_commission=broker_comm, agency_commission=agency_comm,
@@ -1618,9 +1636,15 @@ def _parse_ai_json(raw: str):
 AI_IMPORT_PROMPT = (
     "Extraia TODAS as vendas e responda APENAS com um array JSON "
     "(sem texto extra, sem markdown). Cada item deve ter os campos: property_name (loteamento), "
-    "quadra, lote, client_name, client_phone, client_email, broker_name (corretor), "
+    "quadra, lote, client_name, client_phone, client_email, "
+    "client_cpf (CPF do cliente — pode aparecer como CPF, CNPJ/CPF, CPF/CNPJ, Documento, 'CPF do cliente'; "
+    "retorne apenas os dígitos, sem pontos ou traços), "
+    "client_birthdate (data de nascimento do cliente — pode aparecer como 'Data de Nascimento', 'Nascimento', "
+    "'Dt. Nascimento', 'Data Nasc.'; converta para YYYY-MM-DD), "
+    "broker_name (corretor), "
     "sale_date (converta qualquer formato para YYYY-MM-DD), sale_value (número puro, sem R$), "
     "commission_rate (número ou null), commission_value (número ou null), num_parcelas (inteiro ou null). "
+    "NUNCA ignore client_cpf nem client_birthdate quando existirem no arquivo. "
     "Use null quando o dado não existir. Ignore linhas de cabeçalho/total/rodapé."
 )
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif", ".gif", ".bmp")
@@ -1695,6 +1719,8 @@ async def import_ai_preview(file: UploadFile = File(...), user: dict = Depends(r
             "property_name": _clean(d.get("property_name")), "quadra": _clean(d.get("quadra")),
             "lote": _clean(d.get("lote")), "client_name": _clean(d.get("client_name")),
             "client_phone": _clean(d.get("client_phone")), "client_email": _clean(d.get("client_email")),
+            "client_cpf": _only_digits(_clean(d.get("client_cpf"))),
+            "client_birthdate": parse_date_opt(d.get("client_birthdate")),
             "broker_name": _clean(d.get("broker_name")), "sale_date": parse_date(d.get("sale_date")),
             "sale_value": sv, "commission_rate": rate, "commission_value": cval,
             "num_parcelas": int(parse_brl(d.get("num_parcelas")) or 0),
@@ -1705,7 +1731,13 @@ async def import_ai_preview(file: UploadFile = File(...), user: dict = Depends(r
         item["new_loteamento"] = bool(item["property_name"]) and item["property_name"].lower() not in lot_set
         item["new_corretor"] = bool(item["broker_name"]) and item["broker_name"].lower() not in corr_names
         out.append(item)
-    return {"rows": out, "total": len(out), "duplicates": sum(1 for r in out if r["is_duplicate"])}
+    return {
+        "rows": out, "total": len(out), "duplicates": sum(1 for r in out if r["is_duplicate"]),
+        "mapping": {
+            "cpf": any(r.get("client_cpf") for r in out),
+            "birthdate": any(r.get("client_birthdate") for r in out),
+        },
+    }
 
 
 class AIImportConfirm(BaseModel):
@@ -1759,6 +1791,7 @@ async def import_ai_confirm(data: AIImportConfirm, user: dict = Depends(require_
             property_name=prop, quadra=_clean(d.get("quadra")), lote=_clean(d.get("lote")),
             client_name=_clean(d.get("client_name")), client_phone=_clean(d.get("client_phone")),
             client_email=_clean(d.get("client_email")), broker_name=broker or owner_name,
+            client_cpf=_only_digits(_clean(d.get("client_cpf"))), client_birthdate=parse_date_opt(d.get("client_birthdate")),
             brokers=[{"name": broker or owner_name, "split_pct": 100.0, "owner_id": owner_id}],
             sale_date=sd, sale_value=sv, commission_rate=rate, commission_value=cval,
             broker_split=60.0, broker_commission=bc, agency_commission=round(cval - bc, 2),

@@ -11,10 +11,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { brl } from "@/lib/format";
-import { UploadCloud, FileSpreadsheet, FileText, Download, Loader2, Sparkles, ArrowLeft, Camera } from "lucide-react";
+import { UploadCloud, FileSpreadsheet, FileText, Download, Loader2, Sparkles, ArrowLeft, Camera, CheckCircle2, AlertTriangle } from "lucide-react";
 
-const TEMPLATE_HEADERS = "Loteamento,Quadra,Lote,Cliente,Numero,Email,Corretor,Data,Valor,Comissao %,Entrada,Parcelas";
-const TEMPLATE_EXAMPLE = "Residencial Jardim das Aguas,12,07,Maria Silva,(11) 98888-0000,maria@email.com,Ana Paula,15/06/2026,180000,6,18000,12";
+const TEMPLATE_HEADERS = "Loteamento,Quadra,Lote,Cliente,Numero,Email,CPF,Data de Nascimento,Corretor,Data,Valor,Comissao %,Entrada,Parcelas";
+const TEMPLATE_EXAMPLE = "Residencial Jardim das Aguas,12,07,Maria Silva,(11) 98888-0000,maria@email.com,123.456.789-00,10/05/1990,Ana Paula,15/06/2026,180000,6,18000,12";
 const ACCEPT = ".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,.bmp";
 
 export default function ImportDialog({ open, onOpenChange, onImported }) {
@@ -68,7 +68,7 @@ export default function ImportDialog({ open, onOpenChange, onImported }) {
       const fd = new FormData();
       fd.append("file", aiFile);
       const res = await api.post("/sales/import-ai/preview", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      setPreview({ total: res.data.total, duplicates: res.data.duplicates });
+      setPreview({ total: res.data.total, duplicates: res.data.duplicates, mapping: res.data.mapping || {} });
       setRows(res.data.rows || []);
       const sel = new Set();
       (res.data.rows || []).forEach((r, i) => { if (!r.is_duplicate) sel.add(i); });
@@ -159,6 +159,28 @@ export default function ImportDialog({ open, onOpenChange, onImported }) {
                 </div>
                 <datalist id="imp-lots">{lotNames.map((n) => <option key={n} value={n} />)}</datalist>
                 <datalist id="imp-corrs">{corrNames.map((n) => <option key={n} value={n} />)}</datalist>
+
+                <div data-testid="import-mapping-summary" className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs space-y-1.5">
+                  <div className="font-semibold text-foreground">Conferência do mapeamento das colunas</div>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1">
+                    {[
+                      { ok: !!preview.mapping?.cpf, from: "CPF", to: "CPF" },
+                      { ok: !!preview.mapping?.birthdate, from: "Data de Nascimento", to: "Data de nascimento" },
+                    ].map((m) => (
+                      <span key={m.to} data-testid={`map-${m.to === "CPF" ? "cpf" : "birthdate"}`} className="inline-flex items-center gap-1.5">
+                        {m.ok ? (
+                          <><CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--emerald))]" /><span className="text-foreground">{m.from} → <b>{m.to}</b></span></>
+                        ) : (
+                          <><AlertTriangle className="h-3.5 w-3.5 text-[hsl(var(--amber))]" /><span className="text-[hsl(var(--amber))] font-medium">{m.to}: COLUNA NÃO IDENTIFICADA</span></>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                  {(!preview.mapping?.cpf || !preview.mapping?.birthdate) && (
+                    <p className="text-muted-foreground">Não reconheci automaticamente — preencha a coluna direto na tabela abaixo antes de importar.</p>
+                  )}
+                </div>
+
                 <div className="rounded-xl border border-border/60 overflow-x-auto max-h-[56vh] overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-card z-10">
@@ -168,6 +190,8 @@ export default function ImportDialog({ open, onOpenChange, onImported }) {
                         <th className="p-2 font-medium">Qd/Lt</th>
                         <th className="p-2 font-medium min-w-[140px]">Corretor</th>
                         <th className="p-2 font-medium min-w-[140px]">Cliente</th>
+                        <th className="p-2 font-medium min-w-[130px]">CPF</th>
+                        <th className="p-2 font-medium min-w-[140px]">Nascimento</th>
                         <th className="p-2 font-medium">Data</th>
                         <th className="p-2 font-medium text-right">Valor</th>
                       </tr>
@@ -198,6 +222,12 @@ export default function ImportDialog({ open, onOpenChange, onImported }) {
                           </td>
                           <td className="p-2">
                             <Input data-testid={`import-ai-client-${i}`} value={r.client_name || ""} onChange={(e) => updateRow(i, "client_name", e.target.value)} className="h-8" />
+                          </td>
+                          <td className="p-2">
+                            <Input data-testid={`import-ai-cpf-${i}`} value={r.client_cpf || ""} onChange={(e) => updateRow(i, "client_cpf", e.target.value)} className="h-8 w-32" placeholder="CPF" />
+                          </td>
+                          <td className="p-2">
+                            <Input data-testid={`import-ai-birthdate-${i}`} type="date" value={r.client_birthdate || ""} onChange={(e) => updateRow(i, "client_birthdate", e.target.value)} className="h-8 w-36" />
                           </td>
                           <td className="p-2">
                             <Input data-testid={`import-ai-date-${i}`} type="date" value={r.sale_date || ""} onChange={(e) => updateRow(i, "sale_date", e.target.value)} className="h-8 w-36" />
@@ -239,7 +269,7 @@ export default function ImportDialog({ open, onOpenChange, onImported }) {
               className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
             <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground space-y-2">
               <div className="flex items-center gap-2 text-foreground font-semibold"><FileSpreadsheet className="h-4 w-4" /> Colunas reconhecidas</div>
-              <p>Loteamento, Quadra, Lote, Cliente, Número, Email, Corretor, Data, Valor, Comissão %, Entrada, Parcelas.</p>
+              <p>Loteamento, Quadra, Lote, Cliente, Número, Email, <b>CPF</b>, <b>Data de Nascimento</b>, Corretor, Data, Valor, Comissão %, Entrada, Parcelas.</p>
               <button data-testid="import-download-template" onClick={downloadTemplate}
                 className="inline-flex items-center gap-1.5 text-primary font-semibold hover:underline">
                 <Download className="h-3.5 w-3.5" /> Baixar modelo CSV

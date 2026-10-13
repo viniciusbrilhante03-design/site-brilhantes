@@ -211,6 +211,16 @@ entrou e o que falta entrar. Controle datado.
 - crons.yml: 2 crons (birthdays-daily 12:00 UTC, installments-daily 12:30 UTC).
 - Testes: duplicidade 409→force, /api/audit, cron parcelas (401/200) validados via curl. Publicado em produção.
 
+### Iteração 19 (2026-06 fork) — Importação: CPF e Data de Nascimento ✅
+- COLMAP: aliases p/ CPF (CPF, CNPJ/CPF, CPF/CNPJ, Documento, CPF do cliente...) → client_cpf e p/ nascimento
+  (Data de Nascimento, Nascimento, Dt. Nascimento, Data Nasc....) → client_birthdate. Novo parse_date_opt (vazio→"").
+- Importação simples (build_sale_from_row) e IA (preview + confirm) agora preenchem client_cpf (só dígitos) e
+  client_birthdate (YYYY-MM-DD). Prompt da IA instruído a NUNCA ignorar CPF/nascimento.
+- Preview retorna mapping {cpf, birthdate}; ImportDialog mostra "Conferência do mapeamento" (CPF → CPF / Data de
+  Nascimento → Data de nascimento, ou "COLUNA NÃO IDENTIFICADA") e adiciona colunas editáveis CPF e Nascimento.
+  Modelo CSV atualizado com as duas colunas. Demais regras de importação inalteradas.
+- Testado via curl: import simples e preview IA (cpf='12345678900', birthdate='1990-05-10'); mapping true/false corretos.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
