@@ -168,6 +168,18 @@ entrou e o que falta entrar. Controle datado.
 - **Dica de histórico**: ao digitar um cliente existente no formulário, mostra "Cliente já tem N compra(s) · R$ X em VGV".
 - Verificado (iteration_9.json, 8/8 backend + frontend; regressão criar/editar/duplicar OK). Dados limpos (20 vendas).
 
+### Iteração 16 (2026-06 fork) — Lote de atualizações (itens 1,2,3,5,8 parcial) ✅
+- **#2 Moeda BR**: CurrencyInput (máscara em centavos) em valor da venda, comissão total, entrada e parcelas →
+  digitar 4000000 vira R$ 40.000,00 (número 40000). Corrige o bug do zero à frente nas parcelas.
+- **#1 Campos/obrigatórios**: Loteamento/Quadra/Lote/Nome do cliente/Valor com asterisco vermelho (*), sem a palavra
+  "obrigatório". Número/E-mail/CPF/Data de nascimento com "(OPCIONAL)". Novos campos client_cpf e client_birthdate (opcionais).
+- **#3 Parceria proporcional**: ranking e lista de equipe somam qtd e VGV por proporção (50/50 → 0,5 lote + metade do VGV p/ cada).
+- **#5 Comemoração**: confete + frase aleatória + "🎉 Venda cadastrada!" ao criar; toggle de som (localStorage). Só no criar, não no editar.
+- **#8 Ranking**: rótulo "VGV" (era "Volume"); ordem padrão por Quantidade; qtd fracionária (0,5) formatada.
+- Verificado (iteration_10.json, 4/4 backend + frontend). Dados limpos (20 vendas / 0 metas / 0 duplas).
+- PENDENTE p/ próximo lote: #4 transferência de venda (gestor), #6 textos de notificação (qtd/ranking/comissão a vencer),
+  #7 faixas coloridas + frases nas metas, #8 esconder VGV TOTAL da imobiliária para o corretor. #10/#11 já cobertos pela importação com IA.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

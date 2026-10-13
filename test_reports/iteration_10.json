@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 10 verified batch updates: CurrencyInput BR mask (digits → 40.000,00 display, numeric 40000.00 submitted/persisted), required-field asterisks + (OPCIONAL) labels (no 'obrigatório' word anywhere), CPF/birthdate optional + persisting, proportional qty/volume (50/50 split → each broker +0.5 lote and +R$100.000 both in /api/ranking and /api/corretores), RankingCard labels VGV/Qtd/Comissão with Qtd active by default, sale-sound-toggle present. Backend 4/4 pytest pass. End state: 20 sales / 0 goals / 0 groups.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_currency_proportional_cpf.py",
+    "/app/test_reports/pytest/iter10.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "CurrencyInput cleanly stores number in form state (digits/100) → backend keeps numeric sale_value/commission_value — verified live.",
+    "SaleFormDialog uses <span className='text-destructive'>*</span> on required labels and '(OPCIONAL)' on optional ones; validation requires property_name/quadra/lote/client_name/sale_value>0.",
+    "Backend _normalize_brokers correctly distributes split_pct; /api/ranking and /api/corretores accumulate qtd/volume by share (0.5 each for 50/50) — matches spec.",
+    "RankingCard: default order='count', labels [['volume','VGV'],['count','Qtd'],['commission','Comissão']], fmtQty uses maximumFractionDigits:1 so 0,5 renders.",
+    "celebrate.js: confetti + random phrase + localStorage 'celebrate_sound' toggle; Dashboard/CorretorDashboard call it only on createMut.onSuccess (not update) — code confirmed."
+  ],
+  "updated_files": ["/app/backend/tests/test_currency_proportional_cpf.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Master cookie session_token=qa_session_vinicius_001 (or Bearer). Corretor: carlos.teste@brilhantes.com / 12345678900.",
+  "seed_data_creation": "None — all test sales deleted. End state: 20 sales / 0 goals / 0 groups.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run /app/backend/tests/test_currency_proportional_cpf.py with -o addopts='' to disable xdist parallelism (ranking delta test is sensitive to concurrent sale creation). All 4 claims (currency, required/optional, CPF persistence, proportional ranking) are green. Confetti/sound toggle verified via DOM (sale-sound-toggle present). CurrencyInput mask verified live: typing 4000000 displays '40.000,00'. Ranking order buttons text/active state verified: VGV/Qtd/Comissão, default Qtd active.",
+  "rca of the issue": "N/A — all batch updates working as spec."
+}
