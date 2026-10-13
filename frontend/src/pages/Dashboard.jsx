@@ -26,10 +26,12 @@ import TeamDialog from "@/components/TeamDialog";
 import NotificationsBell from "@/components/NotificationsBell";
 import { celebrate, randomPhrase } from "@/lib/celebrate";
 import ClientsDialog from "@/components/ClientsDialog";
+import BirthdaysDialog from "@/components/BirthdaysDialog";
+import TransferSaleDialog from "@/components/TransferSaleDialog";
 import GoalsCard from "@/components/GoalsCard";
 import GoalsDialog from "@/components/GoalsDialog";
 
-import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact } from "lucide-react";
+import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -51,6 +53,8 @@ export default function Dashboard() {
   const [teamOpen, setTeamOpen] = useState(false);
   const [clientsOpen, setClientsOpen] = useState(false);
   const [goalsOpen, setGoalsOpen] = useState(false);
+  const [birthdaysOpen, setBirthdaysOpen] = useState(false);
+  const [transferSale, setTransferSale] = useState(null);
 
   const params = useMemo(() => {
     const p = { year };
@@ -125,6 +129,12 @@ export default function Dashboard() {
     onError: () => toast.error("Erro ao excluir."),
   });
 
+  const transferMut = useMutation({
+    mutationFn: ({ id, broker_name }) => api.post(`/sales/${id}/transfer`, { broker_name }),
+    onSuccess: () => { invalidateAll(); toast.success("Venda transferida!"); },
+    onError: () => toast.error("Erro ao transferir venda."),
+  });
+
   const toggleMut = useMutation({
     mutationFn: ({ saleId, number }) => api.patch(`/sales/${saleId}/installments/${number}`),
     onSuccess: (res) => {
@@ -195,6 +205,11 @@ export default function Dashboard() {
               <Contact className="h-4 w-4" /><span className="hidden md:inline">Clientes</span>
             </Button>
 
+            <Button data-testid="btn-open-birthdays" variant="outline" className="h-9 gap-1.5"
+              onClick={() => setBirthdaysOpen(true)}>
+              <Cake className="h-4 w-4" /><span className="hidden md:inline">Aniversariantes</span>
+            </Button>
+
             <Button data-testid="btn-open-team" variant="outline" className="h-9 gap-1.5"
               onClick={() => setTeamOpen(true)}>
               <UsersRound className="h-4 w-4" /><span className="hidden md:inline">Equipe</span>
@@ -253,6 +268,7 @@ export default function Dashboard() {
           onEdit={(s) => { setEditing(s); setFormOpen(true); }}
           onDuplicate={(s) => { setEditing({ ...s, id: undefined, quadra: "", lote: "", installments: [] }); setFormOpen(true); }}
           onDelete={(id) => deleteMut.mutate(id)}
+          onTransfer={(s) => setTransferSale(s)}
           onOpenInstallments={(s) => setInstSale(s)}
           onImport={() => setImportOpen(true)}
           onExport={handleExport}
@@ -291,6 +307,14 @@ export default function Dashboard() {
 
       <TeamDialog open={teamOpen} onOpenChange={setTeamOpen} />
       <ClientsDialog open={clientsOpen} onOpenChange={setClientsOpen} />
+      <BirthdaysDialog open={birthdaysOpen} onOpenChange={setBirthdaysOpen} />
+      <TransferSaleDialog
+        open={!!transferSale}
+        onOpenChange={(v) => { if (!v) setTransferSale(null); }}
+        sale={transferSale}
+        brokers={brokers}
+        onConfirm={(id, broker_name) => transferMut.mutate({ id, broker_name })}
+      />
       <GoalsDialog open={goalsOpen} onOpenChange={setGoalsOpen} />
     </div>
   );

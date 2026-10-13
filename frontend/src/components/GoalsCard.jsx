@@ -6,6 +6,13 @@ import { Target, Settings2, Building2, UserRound } from "lucide-react";
 
 const fmtVal = (metric, v) => (metric === "vgv" ? brl(v) : `${Math.round(v)}`);
 
+function band(pct) {
+  if (pct >= 100) return { key: "done", label: "META BATIDA! 🎉", dot: "🟢", color: "emerald", bar: "[&>div]:bg-[hsl(var(--emerald))]", text: "text-[hsl(var(--emerald))]" };
+  if (pct >= 90) return { key: "almost", label: "QUASE LÁ!", dot: "🟢", color: "emerald", bar: "[&>div]:bg-[hsl(var(--emerald))]", text: "text-[hsl(var(--emerald))]" };
+  if (pct >= 60) return { key: "evolving", label: "EM EVOLUÇÃO", dot: "🟡", color: "amber", bar: "[&>div]:bg-[hsl(var(--amber))]", text: "text-[hsl(var(--amber))]" };
+  return { key: "accelerate", label: "PRECISA ACELERAR", dot: "🔴", color: "rose", bar: "[&>div]:bg-[hsl(var(--rose))]", text: "text-[hsl(var(--rose))]" };
+}
+
 export default function GoalsCard({ goals, onManage }) {
   const list = goals || [];
   return (
@@ -30,7 +37,7 @@ export default function GoalsCard({ goals, onManage }) {
       ) : (
         <div className="space-y-4">
           {list.map((g) => {
-            const reached = g.pct >= 100;
+            const b = band(g.pct);
             const Icon = g.scope === "company" ? Building2 : UserRound;
             return (
               <div key={g.id} data-testid={`goal-row-${g.id}`} className="space-y-1.5">
@@ -42,15 +49,16 @@ export default function GoalsCard({ goals, onManage }) {
                       · {g.metric === "vgv" ? "VGV" : "Vendas"}{g.month ? "" : " (ano)"}
                     </span>
                   </span>
-                  <span className={`text-xs font-bold tabular shrink-0 ${reached ? "text-[hsl(var(--emerald))]" : "text-muted-foreground"}`}>
-                    {g.pct}%
-                  </span>
+                  <span className={`text-xs font-bold tabular shrink-0 ${b.text}`}>{g.pct}%</span>
                 </div>
-                <Progress value={g.pct}
-                  className={reached ? "[&>div]:bg-[hsl(var(--emerald))]" : "[&>div]:bg-[hsl(var(--gold))]"} />
-                <div className="flex justify-between text-[11px] text-muted-foreground tabular">
-                  <span>{fmtVal(g.metric, g.current)}</span>
-                  <span>meta: {fmtVal(g.metric, g.target)}</span>
+                <Progress value={g.pct} className={b.bar} />
+                <div className="flex items-center justify-between text-[11px] tabular">
+                  <span className={`font-bold tracking-wide ${b.text}`} data-testid={`goal-phrase-${g.id}`}>
+                    {b.dot} {b.label}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {fmtVal(g.metric, g.current)} <span className="opacity-60">/ {fmtVal(g.metric, g.target)}</span>
+                  </span>
                 </div>
               </div>
             );

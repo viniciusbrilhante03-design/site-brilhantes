@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Header, BackgroundTasks
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -21,6 +21,7 @@ import jwt
 import httpx
 import secrets
 import hashlib
+import hmac
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -43,6 +44,7 @@ JWT_ALG = "HS256"
 MASTER_EMAILS = set(e.strip().lower() for e in os.environ.get("MASTER_EMAILS", "").split(",") if e.strip())
 EMAIL_BASE_URL = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip().rstrip("/") or "https://integrations.emergentagent.com"
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
+WEBHOOK_CRON_SECRET = os.environ.get("WEBHOOK_CRON_SECRET", "")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME") or "Brilhante's Imóveis"
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "").rstrip("/")
 
@@ -633,6 +635,37 @@ async def toggle_installment(sale_id: str, number: int, user: dict = Depends(get
     return await db.sales.find_one({"id": sale_id}, {"_id": 0})
 
 
+@api_router.post("/sales/{sale_id}/transfer")
+async def transfer_sale(sale_id: str, request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    new_name = (body.get("broker_name") or "").strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="Informe o corretor de destino")
+    sale = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Venda não encontrada")
+    corr = await _resolve_corretor_by_name(new_name)
+    oid = corr["user_id"] if corr else None
+    upd = {
+        "brokers": [{"name": new_name, "split_pct": 100.0, "owner_id": oid}],
+        "broker_name": new_name,
+        "owner_id": oid or user["user_id"],
+        "owner_name": new_name,
+        "broker_ids": [oid] if oid else [],
+    }
+    await db.sales.update_one({"id": sale_id}, {"$set": upd})
+    await db.sale_audit.insert_one({
+        "id": f"aud_{uuid.uuid4().hex[:10]}", "sale_id": sale_id, "action": "transfer",
+        "from_broker": sale.get("broker_name"), "to_broker": new_name,
+        "by": _display(user), "at": datetime.now(timezone.utc).isoformat(),
+    })
+    if oid:
+        await _notify(oid, "new_sale",
+                      f"Uma venda foi transferida para você: {sale.get('property_name')}.",
+                      {"sale_id": sale_id})
+    return {**sale, **upd}
+
+
 # ---------------- Brokers (corretores) ----------------
 @api_router.get("/brokers")
 async def list_brokers(user: dict = Depends(get_current_user)):
@@ -790,8 +823,8 @@ async def stats(month: Optional[int] = None, year: Optional[int] = None,
         "ja_entrou": ja_entrou,
         "falta_entrar": falta_entrar,
         "qtd_vendas": qtd,
-        "vgv_geral": vgv_geral,
-        "qtd_geral": len(company),
+        "vgv_geral": (None if user.get("role") == "corretor" else vgv_geral),
+        "qtd_geral": (None if user.get("role") == "corretor" else len(company)),
     }
 
 
@@ -929,8 +962,7 @@ async def _notify(user_id: str, ntype: str, message: str, meta: dict = None):
     })
 
 
-async def _owner_rank_map(month, year):
-    sales = await _company_sales(month, year)
+def _rank_from_sales(sales):
     vol = {}
     for s in sales:
         brokers = s.get("brokers") or []
@@ -948,32 +980,58 @@ async def _owner_rank_map(month, year):
     return {oid: i + 1 for i, (oid, _) in enumerate(order)}
 
 
+def _owner_display(u):
+    return (u.get("war_name") or u.get("name") or "Corretor") if u else "Corretor"
+
+
 async def _post_sale_notifications(sale: dict):
     try:
-        valor = _fmt_brl(sale.get("sale_value", 0))
-        msg = f"Nova venda: {sale.get('broker_name')} — {sale.get('property_name')} ({valor})"
+        property_name = sale.get("property_name") or "loteamento"
+        seller = sale.get("broker_name") or "Corretor"
+        sale_msg = f"{seller} vendeu 1 lote no {property_name}."
+
         masters = await db.users.find({"role": "master"}, {"_id": 0}).to_list(50)
+        corretores = await db.users.find({"role": "corretor"}, {"_id": 0}).to_list(1000)
+
+        seller_ids = set(sale.get("broker_ids") or [])
+        if sale.get("owner_id"):
+            seller_ids.add(sale["owner_id"])
+
+        # Nova venda -> gestor(es) + todos os corretores (menos quem vendeu)
         for m in masters:
-            await _notify(m["user_id"], "new_sale", msg, {"sale_id": sale.get("id")})
+            await _notify(m["user_id"], "new_sale", sale_msg, {"sale_id": sale.get("id")})
+        for c in corretores:
+            if c["user_id"] not in seller_ids:
+                await _notify(c["user_id"], "new_sale", sale_msg, {"sale_id": sale.get("id")})
 
         sd = sale.get("sale_date", "") or ""
         try:
             month, year = int(sd[5:7]), int(sd[0:4])
         except (ValueError, IndexError):
             month = year = None
-
-        owner_ids = set(sale.get("broker_ids") or [])
-        if sale.get("owner_id"):
-            owner_ids.add(sale["owner_id"])
-        ranks = await _owner_rank_map(month, year)
-        all_sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
         mlabel = MESES_PT[month - 1] if month else "ano"
-        for oid in owner_ids:
+
+        company = await _company_sales(month, year)
+        cur_ranks = _rank_from_sales(company)
+        prev_ranks = _rank_from_sales([s for s in company if s.get("id") != sale.get("id")])
+        all_sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
+
+        for oid in seller_ids:
             u = await db.users.find_one({"user_id": oid}, {"_id": 0})
             if not u or u.get("role") != "corretor":
                 continue
-            if oid in ranks:
-                await _notify(oid, "ranking", f"Nova venda registrada! Você está em {ranks[oid]}º no ranking de {mlabel}.")
+            cur = cur_ranks.get(oid)
+            prev = prev_ranks.get(oid)
+            rose = cur is not None and (prev is None or cur < prev)
+            if rose:
+                await _notify(oid, "ranking", f"Você subiu para {cur}º no ranking de {mlabel}! 🚀")
+                others_msg = f"{_owner_display(u)} subiu para {cur}º no ranking de {mlabel}."
+                for m in masters:
+                    await _notify(m["user_id"], "ranking", others_msg)
+                for c in corretores:
+                    if c["user_id"] != oid:
+                        await _notify(c["user_id"], "ranking", others_msg)
+
             goals = await db.goals.find({"scope": "broker", "owner_id": oid}, {"_id": 0}).to_list(100)
             for g in goals:
                 prog = await _goal_progress(g, all_sales)
@@ -985,7 +1043,7 @@ async def _post_sale_notifications(sale: dict):
                     level = 90
                 if level:
                     mt = "VGV" if g.get("metric") == "vgv" else "vendas"
-                    txt = (f"🎯 Meta de {mt} atingida! Parabéns!" if level == 100
+                    txt = (f"🎯 Meta de {mt} batida! Parabéns!" if level == 100
                            else f"Você está a {prog['pct']}% da sua meta de {mt}. Falta pouco!")
                     await _notify(oid, "goal", txt)
                     notified.add(level)
@@ -1039,13 +1097,15 @@ async def list_clients(user: dict = Depends(get_current_user)):
             continue
         key = nm.lower()
         c = clients.setdefault(key, {
-            "name": nm, "phone": "", "email": "", "qtd": 0, "volume": 0.0,
-            "last_date": "", "purchases": [],
+            "name": nm, "phone": "", "email": "", "birthdate": "", "broker": "",
+            "qtd": 0, "volume": 0.0, "last_date": "", "purchases": [],
         })
         if s.get("client_phone") and not c["phone"]:
             c["phone"] = s["client_phone"]
         if s.get("client_email") and not c["email"]:
             c["email"] = s["client_email"]
+        if s.get("client_birthdate") and not c["birthdate"]:
+            c["birthdate"] = s["client_birthdate"]
         c["qtd"] += 1
         c["volume"] += s.get("sale_value", 0) or 0
         sd = s.get("sale_date", "") or ""
@@ -1060,8 +1120,97 @@ async def list_clients(user: dict = Depends(get_current_user)):
     out = list(clients.values())
     for c in out:
         c["purchases"].sort(key=lambda p: p.get("sale_date", ""), reverse=True)
+        c["broker"] = c["purchases"][0]["broker_name"] if c["purchases"] else ""
     out.sort(key=lambda c: c["name"].lower())
     return out
+
+
+def _parse_mmdd(bd):
+    bd = (bd or "").strip()
+    if not bd:
+        return None
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", bd)
+    if m:
+        return int(m.group(2)), int(m.group(3))
+    m = re.match(r"^(\d{1,2})/(\d{1,2})(?:/\d{2,4})?$", bd)
+    if m:
+        return int(m.group(2)), int(m.group(1))
+    return None
+
+
+def _br_now():
+    return datetime.now(timezone.utc) - timedelta(hours=3)
+
+
+@api_router.get("/clients/birthdays")
+async def clients_birthdays(month: Optional[int] = None, user: dict = Depends(get_current_user)):
+    m = month or _br_now().month
+    clients = await list_clients(user=user)
+    out = []
+    for c in clients:
+        mmdd = _parse_mmdd(c.get("birthdate"))
+        if not mmdd:
+            continue
+        bmonth, bday = mmdd
+        if bmonth != m:
+            continue
+        out.append({**c, "bmonth": bmonth, "bday": bday})
+    out.sort(key=lambda c: (c["bday"], c["name"].lower()))
+    return out
+
+
+async def _process_birthdays():
+    try:
+        now = _br_now()
+        today_m, today_d = now.month, now.day
+        masters = await db.users.find({"role": "master"}, {"_id": 0}).to_list(50)
+        sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
+        agg = {}
+        for s in sales:
+            nm = (s.get("client_name") or "").strip()
+            if not nm:
+                continue
+            c = agg.setdefault(nm.lower(), {"name": nm, "birthdate": "", "last_date": "", "broker_name": ""})
+            if s.get("client_birthdate") and not c["birthdate"]:
+                c["birthdate"] = s["client_birthdate"]
+            sd = s.get("sale_date", "") or ""
+            if sd >= c["last_date"]:
+                c["last_date"] = sd
+                c["broker_name"] = s.get("broker_name") or c["broker_name"]
+        for c in agg.values():
+            mmdd = _parse_mmdd(c["birthdate"])
+            if not mmdd or mmdd[0] != today_m:
+                continue
+            bmonth, bday = mmdd
+            corr = await _resolve_corretor_by_name((c["broker_name"] or "").split(" + ")[0])
+            targets = [m["user_id"] for m in masters]
+            if corr:
+                targets.append(corr["user_id"])
+            if bday == today_d:
+                for t in targets:
+                    await _notify(t, "birthday", f"🎂 Hoje é aniversário de {c['name']}! Que tal ligar para parabenizar?")
+            if today_d == 1:
+                for t in targets:
+                    await _notify(t, "birthday", f"🎉 Aniversariante do mês: {c['name']} (dia {bday:02d}).")
+    except Exception as e:
+        logger.warning(f"birthday cron failed: {e}")
+
+
+@api_router.post("/cron/birthdays")
+async def cron_birthdays(background_tasks: BackgroundTasks,
+                         authorization: Optional[str] = Header(None),
+                         x_webhook_id: Optional[str] = Header(None)):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    if not WEBHOOK_CRON_SECRET or not token or not hmac.compare_digest(token, WEBHOOK_CRON_SECRET):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    run_id = x_webhook_id or ""
+    if run_id:
+        if await db.cron_runs.find_one({"run_id": run_id}):
+            return {"ok": True, "duplicate": True}
+        await db.cron_runs.insert_one({"run_id": run_id, "at": datetime.now(timezone.utc).isoformat()})
+    background_tasks.add_task(_process_birthdays)
+    return {"ok": True}
 
 
 # ---------------- Goals (metas) ----------------

@@ -18,7 +18,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { brl, formatDateBR, splitComm } from "@/lib/format";
-import { Search, Pencil, Trash2, Wallet, Plus, Upload, Paperclip, Download, FileSpreadsheet, FileText, SlidersHorizontal, X, Copy } from "lucide-react";
+import { Search, Pencil, Trash2, Wallet, Plus, Upload, Paperclip, Download, FileSpreadsheet, FileText, SlidersHorizontal, X, Copy, ArrowRightLeft } from "lucide-react";
 
 const ALL = "all";
 const emptyFilters = { lot: ALL, broker: ALL, status: ALL, client: "", quadra: "", lote: "", start: "", end: "" };
@@ -28,7 +28,7 @@ function statusOf(s) {
   return (s.installments || []).some((i) => !i.received) ? "receber" : "quitado";
 }
 
-export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicate, onDelete, onOpenInstallments, onImport, onExport, onOpenAttachments }) {
+export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicate, onDelete, onTransfer, onOpenInstallments, onImport, onExport, onOpenAttachments }) {
   const [q, setQ] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [f, setF] = useState(emptyFilters);
@@ -264,6 +264,12 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
                           <Button data-testid={`btn-duplicate-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
                             title="Duplicar (novo lote p/ mesmo cliente)" onClick={() => onDuplicate(s)}>
                             <Copy className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {onTransfer && (
+                          <Button data-testid={`btn-transfer-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
+                            title="Transferir para outro corretor" onClick={() => onTransfer(s)}>
+                            <ArrowRightLeft className="h-4 w-4" />
                           </Button>
                         )}
                         <AlertDialog>

@@ -1,0 +1,8 @@
+crons:
+  - name: birthdays-daily
+    description: "Avisa o corretor responsável e o gestor dos aniversariantes do dia e do mês"
+    cron: "0 12 * * *"
+    endpoint: "{{BASE_URL}}/api/cron/birthdays"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

@@ -17,9 +17,10 @@ import SaleFormDialog from "@/components/SaleFormDialog";
 import InstallmentsDialog from "@/components/InstallmentsDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
+import BirthdaysDialog from "@/components/BirthdaysDialog";
 import NotificationsBell from "@/components/NotificationsBell";
 import { celebrate, randomPhrase } from "@/lib/celebrate";
-import { LogOut, Moon, Sun, CalendarDays, KeyRound, Globe, TrendingUp, Wallet, Clock, Hash, UserRound } from "lucide-react";
+import { LogOut, Moon, Sun, CalendarDays, KeyRound, TrendingUp, Wallet, Clock, Hash, UserRound, Cake } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -36,6 +37,7 @@ export default function CorretorDashboard() {
   const [instSale, setInstSale] = useState(null);
   const [attachSale, setAttachSale] = useState(null);
   const [pwdOpen, setPwdOpen] = useState(false);
+  const [birthdaysOpen, setBirthdaysOpen] = useState(false);
 
   const params = useMemo(() => (month === ALL ? { year } : { month, year }), [month, year]);
 
@@ -71,7 +73,6 @@ export default function CorretorDashboard() {
 
   const s = statsQ.data || {};
   const kpis = [
-    { label: "VGV Geral (imobiliária)", value: brl(s.vgv_geral), icon: Globe, tone: "gold" },
     { label: "Minhas Vendas", value: (s.qtd_vendas ?? 0).toLocaleString("pt-BR"), icon: Hash, tone: "primary" },
     { label: "Meu Volume (VGV)", value: brl(s.total_vendido), icon: TrendingUp, tone: "primary" },
     { label: "Minha Comissão", value: brl(s.comissao_corretor), icon: UserRound, tone: "emerald" },
@@ -100,6 +101,9 @@ export default function CorretorDashboard() {
               <SelectContent>{YEARS.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
             </Select>
             <Button variant="outline" size="icon" className="h-9 w-9" onClick={theme.toggle}>{theme.dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</Button>
+            <Button data-testid="btn-open-birthdays" variant="outline" className="h-9 gap-1.5" onClick={() => setBirthdaysOpen(true)}>
+              <Cake className="h-4 w-4" /><span className="hidden md:inline">Aniversariantes</span>
+            </Button>
             <NotificationsBell />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -157,6 +161,7 @@ export default function CorretorDashboard() {
         onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })} />
       <AttachmentsDialog open={!!attachSale} onOpenChange={(v) => { if (!v) setAttachSale(null); }} sale={attachSale} />
       <ChangePasswordDialog open={pwdOpen} onOpenChange={setPwdOpen} />
+      <BirthdaysDialog open={birthdaysOpen} onOpenChange={setBirthdaysOpen} />
     </div>
   );
 }
