@@ -18,6 +18,7 @@ import InstallmentsDialog from "@/components/InstallmentsDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import NotificationsBell from "@/components/NotificationsBell";
+import { celebrate, randomPhrase } from "@/lib/celebrate";
 import { LogOut, Moon, Sun, CalendarDays, KeyRound, Globe, TrendingUp, Wallet, Clock, Hash, UserRound } from "lucide-react";
 
 const ALL = "all";
@@ -50,7 +51,7 @@ export default function CorretorDashboard() {
 
   const createMut = useMutation({
     mutationFn: (payload) => (editing?.id ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload)),
-    onSuccess: () => { invalidateAll(); setFormOpen(false); setEditing(null); toast.success(editing?.id ? "Venda atualizada!" : "Venda cadastrada!"); },
+    onSuccess: () => { invalidateAll(); setFormOpen(false); const wasEdit = editing?.id; setEditing(null); if (wasEdit) { toast.success("Venda atualizada!"); } else { celebrate(); toast.success(randomPhrase(), { description: "🎉 Venda cadastrada com sucesso!" }); } },
     onError: () => toast.error("Erro ao salvar venda."),
   });
   const deleteMut = useMutation({ mutationFn: (id) => api.delete(`/sales/${id}`), onSuccess: () => { invalidateAll(); toast.success("Venda movida para o histórico."); } });

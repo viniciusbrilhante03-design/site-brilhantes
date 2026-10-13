@@ -134,6 +134,8 @@ class SaleCreate(BaseModel):
     client_name: Optional[str] = ""
     client_phone: Optional[str] = ""
     client_email: Optional[str] = ""
+    client_cpf: Optional[str] = ""
+    client_birthdate: Optional[str] = ""
     broker_name: str
     brokers: List[SaleBroker] = []
     sale_date: str  # YYYY-MM-DD
@@ -840,7 +842,7 @@ async def ranking(month: Optional[int] = None, year: Optional[int] = None,
                 "comissao": 0.0, "comissao_corretor": 0.0, "photo": None,
                 "is_group": bool(gid), "members": group_members.get(gid, []) if gid else [],
             })
-            bk["qtd"] += 1
+            bk["qtd"] += share
             bk["volume"] += sv * share
             bk["comissao"] += cv * share
             bk["comissao_corretor"] += pool * share
@@ -1790,7 +1792,7 @@ async def list_corretores(user: dict = Depends(require_master)):
                     continue
                 share = ((b.get("split_pct") or 0) / total) if total else 0
                 a = agg.setdefault(oid, {"qtd": 0, "volume": 0.0, "comm": 0.0})
-                a["qtd"] += 1
+                a["qtd"] += share
                 a["volume"] += sv * share
                 a["comm"] += pool * share
         else:

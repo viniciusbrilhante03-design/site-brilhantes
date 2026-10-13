@@ -24,6 +24,7 @@ import ImportDialog from "@/components/ImportDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import TeamDialog from "@/components/TeamDialog";
 import NotificationsBell from "@/components/NotificationsBell";
+import { celebrate, randomPhrase } from "@/lib/celebrate";
 import ClientsDialog from "@/components/ClientsDialog";
 import GoalsCard from "@/components/GoalsCard";
 import GoalsDialog from "@/components/GoalsDialog";
@@ -110,8 +111,10 @@ export default function Dashboard() {
     onSuccess: () => {
       invalidateAll();
       setFormOpen(false);
+      const wasEdit = editing?.id;
       setEditing(null);
-      toast.success(editing ? "Venda atualizada!" : "Venda cadastrada!");
+      if (wasEdit) toast.success("Venda atualizada!");
+      else { celebrate(); toast.success(randomPhrase(), { description: "🎉 Venda cadastrada com sucesso!" }); }
     },
     onError: () => toast.error("Erro ao salvar venda."),
   });

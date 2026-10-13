@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { brl } from "@/lib/format";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { soundEnabled, setSoundEnabled } from "@/lib/celebrate";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { Plus, Trash2, Users, Sparkles, Loader2 } from "lucide-react";
@@ -18,6 +20,8 @@ const empty = {
   client_name: "",
   client_phone: "",
   client_email: "",
+  client_cpf: "",
+  client_birthdate: "",
   brokers: [{ name: "", split_pct: 100 }],
   sale_date: new Date().toISOString().slice(0, 10),
   sale_value: "",
@@ -50,6 +54,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
   const [form, setForm] = useState(empty);
   const [numParcelas, setNumParcelas] = useState(1);
   const [aiLoading, setAiLoading] = useState(false);
+  const [soundOn, setSoundOn] = useState(soundEnabled());
   const aiRef = useRef(null);
 
   useEffect(() => {
@@ -86,7 +91,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
     const sv = parseFloat(form.sale_value);
     const rate = parseFloat(form.commission_rate);
     if (!isNaN(sv) && !isNaN(rate)) {
-      set("commission_value", ((sv * rate) / 100).toFixed(2));
+      set("commission_value", +((sv * rate) / 100).toFixed(2));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.sale_value, form.commission_rate]);
@@ -222,7 +227,8 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
   };
 
   const brokersValid = partners.some((b) => (b.name || "").trim()) && sumOk;
-  const valid = form.property_name.trim() && brokersValid && parseFloat(form.sale_value) > 0;
+  const valid = form.property_name.trim() && form.quadra.trim() && form.lote.trim()
+    && form.client_name.trim() && brokersValid && (parseFloat(form.sale_value) || 0) > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -255,7 +261,7 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
           <div className="space-y-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Loteamento</div>
             <div className="space-y-1.5">
-              <Label>Loteamento</Label>
+              <Label>Loteamento <span className="text-destructive">*</span></Label>
               <Input data-testid="sale-form-property-input" list="loteamentos-list" value={form.property_name}
                 onChange={(e) => set("property_name", e.target.value)} placeholder="Comece a digitar o loteamento..." />
               <datalist id="loteamentos-list">
@@ -264,12 +270,12 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
             </div>
             <div className="grid sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <Label>Quadra (opcional)</Label>
+                <Label>Quadra <span className="text-destructive">*</span></Label>
                 <Input data-testid="sale-form-quadra-input" value={form.quadra}
                   onChange={(e) => set("quadra", e.target.value)} placeholder="Ex: 12" />
               </div>
               <div className="space-y-1.5">
-                <Label>Lote (opcional)</Label>
+                <Label>Lote <span className="text-destructive">*</span></Label>
                 <Input data-testid="sale-form-lote-input" value={form.lote}
                   onChange={(e) => set("lote", e.target.value)} placeholder="Ex: 07" />
               </div>
@@ -342,10 +348,10 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
 
           {/* Cliente */}
           <div className="space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cliente (opcional)</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cliente</div>
             <div className="grid sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <Label>Nome do cliente</Label>
+                <Label>Nome do cliente <span className="text-destructive">*</span></Label>
                 <Input data-testid="sale-form-client-input" list="clients-list" value={form.client_name}
                   onChange={(e) => onClientNameChange(e.target.value)} placeholder="Nome do comprador" />
                 <datalist id="clients-list">
@@ -361,14 +367,24 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
                 })()}
               </div>
               <div className="space-y-1.5">
-                <Label>Número do cliente</Label>
+                <Label>Número do cliente (OPCIONAL)</Label>
                 <Input data-testid="sale-form-client-phone-input" value={form.client_phone}
                   onChange={(e) => set("client_phone", e.target.value)} placeholder="(00) 00000-0000" />
               </div>
               <div className="space-y-1.5">
-                <Label>E-mail</Label>
+                <Label>E-mail (OPCIONAL)</Label>
                 <Input data-testid="sale-form-client-email-input" type="email" value={form.client_email}
                   onChange={(e) => set("client_email", e.target.value)} placeholder="email@exemplo.com" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>CPF (OPCIONAL)</Label>
+                <Input data-testid="sale-form-client-cpf-input" value={form.client_cpf}
+                  onChange={(e) => set("client_cpf", e.target.value)} placeholder="000.000.000-00" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Data de nascimento (OPCIONAL)</Label>
+                <Input data-testid="sale-form-client-birthdate-input" type="date" value={form.client_birthdate}
+                  onChange={(e) => set("client_birthdate", e.target.value)} />
               </div>
             </div>
           </div>
@@ -378,9 +394,9 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Valores e comissão</div>
             <div className="grid sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <Label>Valor da venda (R$)</Label>
-                <Input data-testid="sale-form-value-input" type="number" step="0.01" value={form.sale_value}
-                  onChange={(e) => set("sale_value", e.target.value)} placeholder="0,00" />
+                <Label>Valor da venda (R$) <span className="text-destructive">*</span></Label>
+                <CurrencyInput data-testid="sale-form-value-input" value={form.sale_value}
+                  onChange={(v) => set("sale_value", v)} placeholder="0,00" />
               </div>
               <div className="space-y-1.5">
                 <Label>Comissão (%)</Label>
@@ -389,8 +405,8 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
               </div>
               <div className="space-y-1.5">
                 <Label>Comissão total (R$)</Label>
-                <Input data-testid="sale-form-commission-value" type="number" step="0.01" value={form.commission_value}
-                  onChange={(e) => set("commission_value", e.target.value)} placeholder="0,00" />
+                <CurrencyInput data-testid="sale-form-commission-value" value={form.commission_value}
+                  onChange={(v) => set("commission_value", v)} placeholder="0,00" />
               </div>
             </div>
 
@@ -423,9 +439,9 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Valor de entrada (R$)</Label>
-                <Input data-testid="sale-form-entrada-input" type="number" step="0.01" value={form.entrada}
-                  onChange={(e) => set("entrada", e.target.value)} placeholder="0,00" />
+                <Label>Valor de entrada (R$) (OPCIONAL)</Label>
+                <CurrencyInput data-testid="sale-form-entrada-input" value={form.entrada}
+                  onChange={(v) => set("entrada", v)} placeholder="0,00" />
               </div>
               <div className="flex items-end pb-2">
                 <div className="flex items-center gap-3">
@@ -456,8 +472,8 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
               <div className="flex flex-wrap items-end gap-3">
                 <div className="space-y-1.5">
                   <Label>Nº de parcelas</Label>
-                  <Input data-testid="sale-form-num-parcelas" type="number" min="1" value={numParcelas}
-                    onChange={(e) => setNumParcelas(e.target.value)} className="w-28" />
+                  <Input data-testid="sale-form-num-parcelas" type="text" inputMode="numeric" value={numParcelas}
+                    onChange={(e) => setNumParcelas(e.target.value.replace(/\D/g, ""))} className="w-28" />
                 </div>
                 <Button type="button" variant="secondary" onClick={generateInstallments}
                   data-testid="sale-form-generate-installments">
@@ -475,8 +491,8 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
                       <span className="w-7 text-xs font-semibold text-muted-foreground tabular">#{inst.number}</span>
                       <Input type="date" value={inst.due_date}
                         onChange={(e) => updateInstallment(idx, "due_date", e.target.value)} className="h-9 flex-1" />
-                      <Input type="number" step="0.01" value={inst.value}
-                        onChange={(e) => updateInstallment(idx, "value", e.target.value)} className="h-9 w-32" />
+                      <CurrencyInput value={inst.value}
+                        onChange={(v) => updateInstallment(idx, "value", v)} className="h-9 w-32" />
                       <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive"
                         onClick={() => removeInstallment(idx)}>
                         <Trash2 className="h-4 w-4" />
@@ -490,6 +506,11 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
         </div>
 
         <DialogFooter>
+          <div className="flex items-center gap-2 mr-auto text-xs text-muted-foreground">
+            <Switch data-testid="sale-sound-toggle" checked={soundOn}
+              onCheckedChange={(v) => { setSoundOn(v); setSoundEnabled(v); }} />
+            🔊 Som de comemoração
+          </div>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button data-testid="sale-form-submit-button" onClick={handleSubmit} disabled={!valid}>
             <Plus className="h-4 w-4 mr-1" /> {initial?.id ? "Salvar alterações" : "Cadastrar venda"}

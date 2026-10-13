@@ -31,7 +31,7 @@ const podium = [
 
 export default function RankingCard() {
   const [mode, setMode] = useState("month");     // week | month | year | custom
-  const [order, setOrder] = useState("volume");  // volume | count | commission
+  const [order, setOrder] = useState("count");  // volume | count | commission
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
 
@@ -47,8 +47,9 @@ export default function RankingCard() {
     return list.sort((a, b) => (b[key] || 0) - (a[key] || 0));
   }, [rankingQ.data, order]);
 
-  const mainVal = (b) => (order === "count" ? `${b.qtd}` : brl(order === "volume" ? b.volume : b.comissao_corretor));
-  const subVal = (b) => (order === "count" ? brl(b.volume) : order === "volume" ? `${b.qtd} venda(s)` : `${b.qtd} venda(s)`);
+  const fmtQty = (q) => Number(q || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  const mainVal = (b) => (order === "count" ? fmtQty(b.qtd) : brl(order === "volume" ? b.volume : b.comissao_corretor));
+  const subVal = (b) => (order === "count" ? brl(b.volume) : `${fmtQty(b.qtd)} lote(s)`);
 
   return (
     <Card className="p-5 rounded-xl border-border/60" data-testid="broker-ranking">
@@ -78,7 +79,7 @@ export default function RankingCard() {
       )}
 
       <div className="inline-flex rounded-lg bg-muted p-1 mb-4 w-full">
-        {[["volume", "Volume"], ["count", "Qtd"], ["commission", "Comissão"]].map(([v, lbl]) => (
+        {[["volume", "VGV"], ["count", "Qtd"], ["commission", "Comissão"]].map(([v, lbl]) => (
           <button key={v} data-testid={`ranking-order-${v}`} onClick={() => setOrder(v)}
             className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md transition-all ${order === v ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`}>
             {lbl}
