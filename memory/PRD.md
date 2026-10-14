@@ -221,6 +221,17 @@ entrou e o que falta entrar. Controle datado.
   Modelo CSV atualizado com as duas colunas. Demais regras de importação inalteradas.
 - Testado via curl: import simples e preview IA (cpf='12345678900', birthdate='1990-05-10'); mapping true/false corretos.
 
+### Iteração 20 (2026-06 fork) — FIX: corretor via tudo zerado 🐞✅
+- Causa: ranking agrupa por NOME, mas stats/`/sales`/`/clients` filtravam só por owner_id/broker_ids;
+  vendas seed/importadas tinham owner_id=None → corretor aparecia no ranking mas via VGV/comissão/qtd/clientes zerados.
+- Fix: novos helpers _user_names/_sale_belongs/_scoped_sales — escopo do corretor agora casa também pelo NOME
+  (broker_name e brokers[].name, igual ao ranking). list_sales e list_clients usam _scoped_sales.
+- _partner_share passou a receber `user` e considerar nome além de owner_id (VGV/comissão corretos p/ vendas sem owner_id).
+- Backfill único no preview: 10 vendas tiveram owner_id/broker_ids/brokers preenchidos (nome → corretor). Em produção
+  o casamento por nome funciona ao vivo (sem depender de backfill).
+- Validado via API: Carlão 6 vendas/VGV 704k/comissões ok; Aninha 4 vendas. (Clientes aparecem quando a venda tem nome
+  do cliente — as vendas demo estão sem client_name.) Requer REPUBLICAR para valer em produção.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

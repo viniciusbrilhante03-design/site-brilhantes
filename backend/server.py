@@ -81,6 +81,34 @@ def _scope_query(user: dict) -> dict:
     return {"$or": [{"owner_id": uid}, {"broker_ids": uid}]}
 
 
+def _user_names(user: dict) -> set:
+    return {n for n in [(user.get("war_name") or "").strip().lower(),
+                        (user.get("name") or "").strip().lower()] if n}
+
+
+def _sale_belongs(s: dict, user: dict, names: set = None) -> bool:
+    uid = user["user_id"]
+    if s.get("owner_id") == uid or uid in (s.get("broker_ids") or []):
+        return True
+    if names is None:
+        names = _user_names(user)
+    if (s.get("broker_name") or "").strip().lower() in names:
+        return True
+    for b in (s.get("brokers") or []):
+        if b.get("owner_id") == uid or (b.get("name") or "").strip().lower() in names:
+            return True
+    return False
+
+
+async def _scoped_sales(user: dict) -> list:
+    """Vendas visíveis ao usuário: casa por owner_id/broker_ids E por nome do corretor (igual ao ranking)."""
+    docs = await db.sales.find({}, {"_id": 0}).to_list(5000)
+    if user.get("role") == "master":
+        return docs
+    names = _user_names(user)
+    return [s for s in docs if _sale_belongs(s, user, names)]
+
+
 def _set_jwt_cookie(response: Response, token: str):
     response.set_cookie(key="access_token", value=token, httponly=True,
                         secure=True, samesite="none", path="/", max_age=7 * 24 * 60 * 60)
@@ -468,7 +496,7 @@ async def _company_sales(month, year):
 @api_router.get("/sales", response_model=List[Sale])
 async def list_sales(month: Optional[int] = None, year: Optional[int] = None,
                      user: dict = Depends(get_current_user)):
-    docs = await db.sales.find(_scope_query(user), {"_id": 0}).to_list(5000)
+    docs = await _scoped_sales(user)
     results = [d for d in docs if _match_period(d, month, year)]
     results.sort(key=lambda x: x.get("sale_date", ""), reverse=True)
     return results
@@ -793,12 +821,16 @@ def _broker_pool(s: dict) -> float:
     return _broker_comm(s)
 
 
-def _partner_share(s: dict, uid: str) -> float:
+def _partner_share(s: dict, user: dict) -> float:
+    uid = user["user_id"]
+    names = _user_names(user)
     brokers = s.get("brokers") or []
     if not brokers:
-        return 1.0 if s.get("owner_id") == uid else 0.0
+        owns = s.get("owner_id") == uid or (s.get("broker_name") or "").strip().lower() in names
+        return 1.0 if owns else 0.0
     total = sum((b.get("split_pct") or 0) for b in brokers) or 100.0
-    mine = sum((b.get("split_pct") or 0) for b in brokers if b.get("owner_id") == uid)
+    mine = sum((b.get("split_pct") or 0) for b in brokers
+               if b.get("owner_id") == uid or (b.get("name") or "").strip().lower() in names)
     return (mine / total) if total else 0.0
 
 
@@ -827,7 +859,7 @@ async def stats(month: Optional[int] = None, year: Optional[int] = None,
     if user.get("role") == "corretor":
         uid = user["user_id"]
         def sh(s):
-            return _partner_share(s, uid)
+            return _partner_share(s, user)
         total_vendido = sum((s.get("sale_value", 0) or 0) * sh(s) for s in sales)
         comissao_total = sum((s.get("commission_value", 0) or 0) * sh(s) for s in sales)
         comissao_corretor = sum(_broker_pool(s) * sh(s) for s in sales)
@@ -1127,7 +1159,7 @@ async def monthly_series(year: int, user: dict = Depends(get_current_user)):
 # ---------------- Clients (clientes) ----------------
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(get_current_user)):
-    docs = await db.sales.find(_scope_query(user), {"_id": 0}).to_list(5000)
+    docs = await _scoped_sales(user)
     clients = {}
     for s in docs:
         nm = (s.get("client_name") or "").strip()
