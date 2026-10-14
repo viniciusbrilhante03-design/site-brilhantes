@@ -1350,14 +1350,15 @@ async def _goal_progress(g: dict, all_sales: list):
         label = "Imobiliária"
     else:
         oid = g.get("owner_id")
+        u = await db.users.find_one({"user_id": oid}, {"_id": 0})
+        guser = u or {"user_id": oid, "war_name": "", "name": ""}
         vol, cnt = 0.0, 0
         for s in gsales:
-            share = _partner_share(s, oid)
+            share = _partner_share(s, guser)
             if share > 0:
                 vol += (s.get("sale_value", 0) or 0) * share
                 cnt += 1
         cur = vol if g.get("metric") == "vgv" else cnt
-        u = await db.users.find_one({"user_id": oid}, {"_id": 0})
         label = (u.get("war_name") or u.get("name")) if u else "Corretor"
     tgt = g.get("target") or 0
     pct = round(min(cur / tgt * 100, 100), 1) if tgt else 0
@@ -1373,7 +1374,25 @@ async def list_goals(month: Optional[int] = None, year: Optional[int] = None,
         goals = [g for g in goals if g.get("month") in (None, month)]
     if user.get("role") == "corretor":
         uid = user["user_id"]
-        goals = [g for g in goals if g.get("scope") == "company" or g.get("owner_id") == uid]
+        my_names = _user_names(user)
+        my_email = (user.get("email") or "").strip().lower()
+        owner_cache, visible = {}, []
+        for g in goals:
+            if g.get("scope") == "company":
+                visible.append(g)
+                continue
+            oid = g.get("owner_id")
+            if oid == uid:
+                visible.append(g)
+                continue
+            ou = owner_cache.get(oid)
+            if ou is None:
+                ou = await db.users.find_one({"user_id": oid}, {"_id": 0}) or {}
+                owner_cache[oid] = ou
+            o_email = (ou.get("email") or "").strip().lower()
+            if (my_names & _user_names(ou)) or (my_email and my_email == o_email):
+                visible.append(g)
+        goals = visible
     all_sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
     out = [await _goal_progress(g, all_sales) for g in goals]
     out.sort(key=lambda g: (g.get("scope") != "company", g.get("label", "")))

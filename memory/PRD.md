@@ -232,6 +232,15 @@ entrou e o que falta entrar. Controle datado.
 - Validado via API: Carlão 6 vendas/VGV 704k/comissões ok; Aninha 4 vendas. (Clientes aparecem quando a venda tem nome
   do cliente — as vendas demo estão sem client_name.) Requer REPUBLICAR para valer em produção.
 
+### Iteração 21 (2026-06 fork) — FIX: metas não apareciam p/ corretor 🐞✅
+- Sintoma: metas individuais (e coletivas) só apareciam p/ o gestor; corretor via nada.
+- Causas: (1) regressão da it.20 — `_goal_progress` chamava `_partner_share(s, oid)` com string após a nova
+  assinatura `(s, user)` → quebraria o cálculo; (2) visibilidade por `owner_id == uid` falha quando a mesma
+  pessoa tem mais de um registro de usuário (criado manual pelo gestor vs. cadastrado no login) com ids diferentes.
+- Fix: `_goal_progress` resolve o usuário dono e passa o dict p/ `_partner_share` (casa por nome, igual ao escopo).
+  `list_goals` p/ corretor agora mostra TODAS as coletivas + individuais que batem por user_id OU nome/e-mail.
+- Validado via API: corretor Carlão vê a meta coletiva (Imobiliária) e a individual (70,4% sobre VGV dele). Requer REPUBLICAR.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
