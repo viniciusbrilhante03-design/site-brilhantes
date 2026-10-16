@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { brl, formatDateBR } from "@/lib/format";
 import GroupsManager from "@/components/GroupsManager";
-import { Users, Copy, Phone, Mail, IdCard, Link2, History, Camera, Plus, Pencil, Trash2, ArrowLeft, KeyRound, ScrollText, ArrowRightLeft, FilePlus2, FileX2 } from "lucide-react";
+import LoteamentoDetailsDialog from "@/components/LoteamentoDetailsDialog";
+import { Users, Copy, Phone, Mail, IdCard, Link2, History, Camera, Plus, Pencil, Trash2, ArrowLeft, KeyRound, ScrollText, ArrowRightLeft, FilePlus2, FileX2, Sparkles } from "lucide-react";
 
 function fileToDataURL(file, max = 256) {
   return new Promise((resolve, reject) => {
@@ -107,6 +108,7 @@ export default function TeamDialog({ open, onOpenChange }) {
   const [view, setView] = useState("list");
   const [editing, setEditing] = useState(null);
   const [newLot, setNewLot] = useState("");
+  const [lotDetail, setLotDetail] = useState(null);
 
   const teamQ = useQuery({ queryKey: ["corretores"], queryFn: async () => (await api.get("/corretores")).data, enabled: open });
   const histQ = useQuery({ queryKey: ["history"], queryFn: async () => (await api.get("/history")).data, enabled: open });
@@ -139,6 +141,7 @@ export default function TeamDialog({ open, onOpenChange }) {
   const goList = () => { setView("list"); setEditing(null); };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) goList(); }}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="team-dialog">
         <DialogHeader>
@@ -239,6 +242,7 @@ export default function TeamDialog({ open, onOpenChange }) {
                 {(lotQ.data || []).map((l) => (
                   <div key={l.id} data-testid={`lot-${l.id}`} className="flex items-center gap-2 rounded-lg border border-border/60 p-2.5">
                     <span className="flex-1 text-sm font-medium truncate">{l.name}</span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" data-testid={`lot-details-${l.id}`} onClick={() => setLotDetail(l)} title="Dados técnicos e IA"><Sparkles className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" data-testid={`lot-del-${l.id}`} onClick={() => delLotMut.mutate(l.id)}>×</Button>
                   </div>
                 ))}
@@ -287,5 +291,7 @@ export default function TeamDialog({ open, onOpenChange }) {
         </Tabs>
       </DialogContent>
     </Dialog>
+    <LoteamentoDetailsDialog lot={lotDetail} onOpenChange={(v) => { if (!v) setLotDetail(null); }} />
+    </>
   );
 }

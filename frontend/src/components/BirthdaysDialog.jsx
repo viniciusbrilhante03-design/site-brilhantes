@@ -11,6 +11,14 @@ import { Cake, Phone, UserRound } from "lucide-react";
 
 const currentMonth = new Date().getMonth() + 1;
 
+const waLink = (phone, name) => {
+  const digits = (phone || "").replace(/\D/g, "");
+  if (!digits) return null;
+  const full = digits.length <= 11 ? `55${digits}` : digits;
+  const msg = `Olá ${name || ""}, eu e a Brilhante's Imóveis deseja um feliz aniversário com muitas felicidades e bençãos! 🎉🦅`;
+  return `https://wa.me/${full}?text=${encodeURIComponent(msg)}`;
+};
+
 export default function BirthdaysDialog({ open, onOpenChange }) {
   const [month, setMonth] = useState(currentMonth);
 
@@ -63,6 +71,13 @@ export default function BirthdaysDialog({ open, onOpenChange }) {
                     {c.broker && <span className="flex items-center gap-1"><UserRound className="h-3 w-3" />{c.broker}</span>}
                   </div>
                 </div>
+                {waLink(c.phone, c.name) && (
+                  <a data-testid={`birthday-whatsapp-${c.name.toLowerCase()}`} href={waLink(c.phone, c.name)}
+                    target="_blank" rel="noreferrer"
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[hsl(145_63%_42%)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
+                    <Phone className="h-3.5 w-3.5" /> WhatsApp
+                  </a>
+                )}
               </div>
             ))
           )}

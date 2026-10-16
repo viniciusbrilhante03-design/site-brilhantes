@@ -303,6 +303,39 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
 - Testado (curl, master): opt-out tira Carlão do ranking (6→5 entradas) e volta ao reativar.
 - PENDENTE: FASES 6 a 9. (Fase 7 = IA OpenAI — exigirá chave do gestor.) REPUBLICAR p/ produção.
 
+### Iteração 28 (2026-06 fork) — FASE 6 (Agenda + WhatsApp) e FASE 8 (Relatórios por colunas) ✅ [checkpoint]
+**Fase 6 — Agenda de Compromissos:**
+- Coleção `appointments` + CRUD escopado (corretor vê os seus; gestor vê todos): GET/POST/PUT `/appointments`,
+  PATCH `/appointments/{id}/done`, DELETE. Campos: title, type (visita|plantao|ligacao|outro), when (YYYY-MM-DDTHH:MM),
+  client_name, notes, done, owner.
+- Cron `appointments-daily` (11:00 UTC) → `/api/cron/appointments` (Bearer secret, background `_process_appointments`):
+  avisa corretor + gestor dos compromissos do dia (flag notified_today p/ não repetir).
+- `AgendaDialog` (botão "Agenda" nos 2 painéis): lista Pendentes/Concluídos, criar/editar/concluir/excluir, datalist de clientes.
+**Fase 6 — WhatsApp aniversariantes:** BirthdaysDialog ganhou botão "WhatsApp" por cliente → `https://wa.me/55<tel>?text=`
+  com mensagem "Olá {nome}, eu e a Brilhante's Imóveis deseja um feliz aniversário com muitas felicidades e bençãos! 🎉🦅".
+**Fase 8 — Relatórios com colunas personalizadas:**
+- `/export/xlsx` e `/export/pdf` aceitam `columns` (labels separados por `||`); `_select_columns` preserva ordem padrão.
+  PDF/XLSX montados dinamicamente só com as colunas escolhidas; totais recalculados por coluna monetária.
+- `ExportDialog` (botão "Exportar" agora abre o diálogo): 15 colunas com checkbox + Todas/Nenhuma + botões Excel/PDF.
+- Testado (curl): agenda CRUD+done, cron 401/200, xlsx só com as 3 colunas pedidas, pdf custom OK; UI (screenshot): Agenda,
+  Export e WhatsApp (href com 55+tel e mensagem) validados.
+- PENDENTE: FASE 7 (IA Especialista OpenAI + campos técnicos/drag-and-drop do loteamento) e FASE 9. REPUBLICAR p/ produção.
+
+### Iteração 29 (2026-06 fork) — FASE 7 (Campos técnicos + IA Especialista) ✅ [checkpoint]
+- **Integração OpenAI (chave do gestor)**: `OPENAI_API_KEY`/`OPENAI_MODEL` (gpt-4o-mini) no backend/.env; cliente `AsyncOpenAI`
+  lazy. A chave nunca vai ao frontend.
+- **Campos técnicos por loteamento** (aditivo no doc `loteamentos`): `fields[]` ({id,label,value}), `copy`, `ai_training`.
+  Rotas: GET/PUT `/loteamentos/{id}/details` (PUT só master), POST `/loteamentos/{id}/ai` (qualquer autenticado).
+- **IA Especialista**: system prompt em pt-BR usando SOMENTE os campos técnicos + treino + copy; recusa (sem inventar)
+  quando a info não existe. Multi-turn (history até 12 msgs), temp 0.2, max_tokens 700.
+- **Lembrete mensal (dia 3)**: cron `lot-reminder` ("0 12 3 * *") → `/api/cron/lot-reminder` notifica o gestor p/ atualizar
+  as tabelas/dados técnicos dos loteamentos.
+- Frontend `LoteamentoDetailsDialog` (botão ✨ em Equipe › Loteamentos): aba "Dados & Copy" com campos técnicos
+  **drag-and-drop** (HTML5 nativo, sem lib), sugestões de campos, Copy e "Treinar a IA"; aba "IA Especialista" com chat.
+- Testado: save details + IA no contexto ("metragem 250 m², aceita financiamento") e fora do contexto (recusa); cron 401/200;
+  UI (screenshot gestor): 3 campos carregados, drag handles, chat respondendo "status da obra".
+- PENDENTE: FASE 9 (testes finais E2E). REPUBLICAR p/ produção.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

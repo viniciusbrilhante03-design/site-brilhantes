@@ -48,6 +48,8 @@ EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
 WEBHOOK_CRON_SECRET = os.environ.get("WEBHOOK_CRON_SECRET", "")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME") or "Brilhante's Imóveis"
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "").rstrip("/")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
 
 def hash_password(p: str) -> str:
@@ -610,6 +612,251 @@ async def add_loteamento(request: Request, user: dict = Depends(require_master))
 @api_router.delete("/loteamentos/{lot_id}")
 async def delete_loteamento(lot_id: str, user: dict = Depends(require_master)):
     await db.loteamentos.delete_one({"id": lot_id})
+    return {"ok": True}
+
+
+# ---------------- Loteamento: campos técnicos + IA Especialista (Fase 7) ----------------
+_openai_client = None
+
+
+def _get_openai():
+    global _openai_client
+    if _openai_client is None:
+        from openai import AsyncOpenAI
+        _openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    return _openai_client
+
+
+class LotField(BaseModel):
+    id: Optional[str] = ""
+    label: str = ""
+    value: Optional[str] = ""
+
+
+class LoteamentoDetails(BaseModel):
+    fields: List[LotField] = []
+    copy: Optional[str] = ""
+    ai_training: Optional[str] = ""
+
+
+class AiAsk(BaseModel):
+    message: str
+    history: List[dict] = []
+
+
+@api_router.get("/loteamentos/{lot_id}/details")
+async def get_loteamento_details(lot_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Loteamento não encontrado")
+    doc.setdefault("fields", [])
+    doc.setdefault("copy", "")
+    doc.setdefault("ai_training", "")
+    return doc
+
+
+@api_router.put("/loteamentos/{lot_id}/details")
+async def update_loteamento_details(lot_id: str, data: LoteamentoDetails, user: dict = Depends(require_master)):
+    existing = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Loteamento não encontrado")
+    fields = []
+    for f in (data.fields or []):
+        label = (f.label or "").strip()
+        if not label:
+            continue
+        fields.append({"id": f.id or f"fld_{uuid.uuid4().hex[:8]}",
+                       "label": label, "value": (f.value or "").strip()})
+    upd = {"fields": fields, "copy": (data.copy or "").strip(),
+           "ai_training": (data.ai_training or "").strip(),
+           "details_updated_at": datetime.now(timezone.utc).isoformat()}
+    await db.loteamentos.update_one({"id": lot_id}, {"$set": upd})
+    return {**existing, **upd}
+
+
+@api_router.post("/loteamentos/{lot_id}/ai")
+async def ask_loteamento_ai(lot_id: str, data: AiAsk, user: dict = Depends(get_current_user)):
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=400, detail="IA não configurada. Peça ao gestor para cadastrar a chave da OpenAI.")
+    if not (data.message or "").strip():
+        raise HTTPException(status_code=400, detail="Digite uma pergunta")
+    doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Loteamento não encontrado")
+    fields = doc.get("fields") or []
+    ctx = "\n".join(f"- {f.get('label')}: {f.get('value')}" for f in fields if f.get("value")) or "(nenhum campo técnico cadastrado)"
+    system = (
+        f"Você é um assistente especialista no loteamento '{doc.get('name')}' da Brilhante's Imóveis. "
+        "Responda SEMPRE em português, de forma clara e objetiva, para ajudar o corretor a atender o cliente. "
+        "Use SOMENTE os dados técnicos e as informações de treino fornecidos abaixo. "
+        "Se a informação não estiver nos dados, diga claramente que ela não foi informada e sugira confirmar com o gestor. "
+        "Nunca invente preço, metragem, disponibilidade, prazos, documentação ou condições comerciais."
+        f"\n\nDADOS TÉCNICOS DO LOTEAMENTO:\n{ctx}"
+    )
+    if doc.get("ai_training"):
+        system += f"\n\nINFORMAÇÕES EXTRAS (treino do gestor):\n{doc['ai_training']}"
+    if doc.get("copy"):
+        system += f"\n\nTEXTO DE DIVULGAÇÃO (copy):\n{doc['copy']}"
+    history = [m for m in (data.history or [])
+               if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()][-12:]
+    messages = [{"role": "system", "content": system}]
+    messages += [{"role": m["role"], "content": m["content"]} for m in history]
+    messages.append({"role": "user", "content": data.message.strip()})
+    try:
+        comp = await _get_openai().chat.completions.create(
+            model=OPENAI_MODEL, messages=messages, temperature=0.2, max_tokens=700)
+        answer = comp.choices[0].message.content or "Não consegui gerar uma resposta."
+    except Exception as e:
+        logger.warning(f"openai request failed: {type(e).__name__}: {str(e)[:150]}")
+        raise HTTPException(status_code=502, detail="Serviço de IA indisponível no momento.")
+    return {"answer": answer}
+
+
+async def _process_lot_reminder():
+    try:
+        masters = await db.users.find({"role": "master"}, {"_id": 0}).to_list(50)
+        for m in masters:
+            await _notify(m["user_id"], "lot_reminder",
+                          "🗂️ Dia de revisar os loteamentos! Atualize as tabelas e informações técnicas para a IA responder certinho aos corretores.")
+    except Exception as e:
+        logger.warning(f"lot reminder cron failed: {e}")
+
+
+@api_router.post("/cron/lot-reminder")
+async def cron_lot_reminder(background_tasks: BackgroundTasks,
+                            authorization: Optional[str] = Header(None),
+                            x_webhook_id: Optional[str] = Header(None)):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    if not WEBHOOK_CRON_SECRET or not token or not hmac.compare_digest(token, WEBHOOK_CRON_SECRET):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    run_id = x_webhook_id or ""
+    if run_id:
+        if await db.cron_runs.find_one({"run_id": run_id}):
+            return {"ok": True, "duplicate": True}
+        await db.cron_runs.insert_one({"run_id": run_id, "at": datetime.now(timezone.utc).isoformat()})
+    background_tasks.add_task(_process_lot_reminder)
+    return {"ok": True}
+
+
+# ---------------- Agenda / Compromissos ----------------
+APPT_TYPES = {"visita", "plantao", "ligacao", "outro"}
+
+
+class AppointmentCreate(BaseModel):
+    title: str
+    type: str = "visita"           # visita | plantao | ligacao | outro
+    when: str                      # "YYYY-MM-DDTHH:MM"
+    client_name: Optional[str] = ""
+    notes: Optional[str] = ""
+    done: bool = False
+
+
+def _appt_scope(user: dict) -> dict:
+    if user.get("role") == "master":
+        return {}
+    return {"owner_id": user["user_id"]}
+
+
+@api_router.get("/appointments")
+async def list_appointments(start: Optional[str] = None, end: Optional[str] = None,
+                            user: dict = Depends(get_current_user)):
+    docs = await db.appointments.find(_appt_scope(user), {"_id": 0}).to_list(2000)
+    if start:
+        docs = [d for d in docs if (d.get("when") or "")[:10] >= start]
+    if end:
+        docs = [d for d in docs if (d.get("when") or "")[:10] <= end]
+    docs.sort(key=lambda d: d.get("when", ""))
+    return docs
+
+
+@api_router.post("/appointments")
+async def create_appointment(data: AppointmentCreate, user: dict = Depends(get_current_user)):
+    if not (data.title or "").strip():
+        raise HTTPException(status_code=400, detail="Informe o título do compromisso")
+    if not (data.when or "").strip():
+        raise HTTPException(status_code=400, detail="Informe a data/hora do compromisso")
+    typ = data.type if data.type in APPT_TYPES else "outro"
+    doc = {
+        "id": f"appt_{uuid.uuid4().hex[:12]}",
+        "owner_id": user["user_id"], "owner_name": _display(user),
+        "title": data.title.strip(), "type": typ, "when": data.when.strip(),
+        "client_name": (data.client_name or "").strip(), "notes": (data.notes or "").strip(),
+        "done": bool(data.done), "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.appointments.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.put("/appointments/{appt_id}")
+async def update_appointment(appt_id: str, data: AppointmentCreate, user: dict = Depends(get_current_user)):
+    existing = await db.appointments.find_one({"id": appt_id, **_appt_scope(user)}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Compromisso não encontrado")
+    typ = data.type if data.type in APPT_TYPES else "outro"
+    upd = {"title": (data.title or "").strip(), "type": typ, "when": (data.when or "").strip(),
+           "client_name": (data.client_name or "").strip(), "notes": (data.notes or "").strip(),
+           "done": bool(data.done)}
+    await db.appointments.update_one({"id": appt_id}, {"$set": upd})
+    return {**existing, **upd}
+
+
+@api_router.patch("/appointments/{appt_id}/done")
+async def toggle_appointment_done(appt_id: str, request: Request, user: dict = Depends(get_current_user)):
+    existing = await db.appointments.find_one({"id": appt_id, **_appt_scope(user)}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Compromisso não encontrado")
+    body = await request.json()
+    await db.appointments.update_one({"id": appt_id}, {"$set": {"done": bool(body.get("done", True))}})
+    return {"ok": True}
+
+
+@api_router.delete("/appointments/{appt_id}")
+async def delete_appointment(appt_id: str, user: dict = Depends(get_current_user)):
+    res = await db.appointments.delete_one({"id": appt_id, **_appt_scope(user)})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Compromisso não encontrado")
+    return {"ok": True}
+
+
+async def _process_appointments():
+    try:
+        now = _br_now()
+        today = now.date().isoformat()
+        masters = await db.users.find({"role": "master"}, {"_id": 0}).to_list(50)
+        master_ids = [m["user_id"] for m in masters]
+        TLABEL = {"visita": "Visita", "plantao": "Plantão", "ligacao": "Retorno de ligação", "outro": "Compromisso"}
+        appts = await db.appointments.find({"done": {"$ne": True}}, {"_id": 0}).to_list(3000)
+        for a in appts:
+            when = a.get("when") or ""
+            if when[:10] != today or a.get("notified_today"):
+                continue
+            hora = when[11:16] or ""
+            cli = f" com {a['client_name']}" if a.get("client_name") else ""
+            msg = f"🗓️ Hoje {hora}: {TLABEL.get(a.get('type'), 'Compromisso')} — {a.get('title')}{cli}."
+            targets = list(dict.fromkeys([a.get("owner_id")] + master_ids))
+            for t in targets:
+                await _notify(t, "appointment", msg, {"appt_id": a.get("id")})
+            await db.appointments.update_one({"id": a.get("id")}, {"$set": {"notified_today": True}})
+    except Exception as e:
+        logger.warning(f"appointments cron failed: {e}")
+
+
+@api_router.post("/cron/appointments")
+async def cron_appointments(background_tasks: BackgroundTasks,
+                            authorization: Optional[str] = Header(None),
+                            x_webhook_id: Optional[str] = Header(None)):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    if not WEBHOOK_CRON_SECRET or not token or not hmac.compare_digest(token, WEBHOOK_CRON_SECRET):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    run_id = x_webhook_id or ""
+    if run_id:
+        if await db.cron_runs.find_one({"run_id": run_id}):
+            return {"ok": True, "duplicate": True}
+        await db.cron_runs.insert_one({"run_id": run_id, "at": datetime.now(timezone.utc).isoformat()})
+    background_tasks.add_task(_process_appointments)
     return {"ok": True}
 
 
@@ -2345,6 +2592,21 @@ def _period_label(month, year):
     return f"Ano de {year}"
 
 
+EXPORT_COLUMNS = ["Data", "Loteamento", "Quadra", "Lote", "Cliente", "Corretor",
+                  "Valor da venda", "Comissão %", "Comissão total", "Comissão corretor",
+                  "Comissão imobiliária", "Entrada", "Já recebido", "A receber", "Status"]
+MONEY_COLS = {"Valor da venda", "Comissão total", "Comissão corretor",
+              "Comissão imobiliária", "Entrada", "Já recebido", "A receber"}
+
+
+def _select_columns(param):
+    if not param:
+        return list(EXPORT_COLUMNS)
+    wanted = [c.strip() for c in param.split("||") if c.strip()]
+    cols = [c for c in EXPORT_COLUMNS if c in wanted]
+    return cols or list(EXPORT_COLUMNS)
+
+
 def _export_rows(sales):
     rows = []
     for s in sales:
@@ -2376,10 +2638,12 @@ def _export_rows(sales):
 
 @api_router.get("/export/xlsx")
 async def export_xlsx(month: Optional[int] = None, year: Optional[int] = None,
+                      columns: Optional[str] = None,
                       user: dict = Depends(get_current_user)):
     sales = await list_sales(month=month, year=year, user=user)
     rows = _export_rows(sales)
-    df = pd.DataFrame(rows)
+    cols = _select_columns(columns)
+    df = pd.DataFrame(rows, columns=EXPORT_COLUMNS)[cols]
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Vendas")
@@ -2394,6 +2658,7 @@ async def export_xlsx(month: Optional[int] = None, year: Optional[int] = None,
 
 @api_router.get("/export/pdf")
 async def export_pdf(month: Optional[int] = None, year: Optional[int] = None,
+                     columns: Optional[str] = None,
                      user: dict = Depends(get_current_user)):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib import colors
@@ -2403,13 +2668,7 @@ async def export_pdf(month: Optional[int] = None, year: Optional[int] = None,
 
     sales = await list_sales(month=month, year=year, user=user)
     rows = _export_rows(sales)
-
-    total_vendido = sum(r["Valor da venda"] for r in rows)
-    total_com = sum(r["Comissão total"] for r in rows)
-    total_corr = sum(r["Comissão corretor"] for r in rows)
-    total_imob = sum(r["Comissão imobiliária"] for r in rows)
-    total_recv = sum(r["Já recebido"] for r in rows)
-    total_pend = sum(r["A receber"] for r in rows)
+    cols = _select_columns(columns)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
@@ -2432,29 +2691,24 @@ async def export_pdf(month: Optional[int] = None, year: Optional[int] = None,
         Spacer(1, 8 * mm),
     ]
 
-    headers = ["Data", "Loteamento", "Qd/Lt", "Cliente", "Corretor", "Valor",
-               "Com.", "Corretor", "Imob.", "Entrada", "Recebido", "A receber", "Status"]
-    data = [[Paragraph(h, head) for h in headers]]
+    headers_cells = [Paragraph(h, head) for h in cols]
+    data = [headers_cells]
     for r in rows:
-        ql = " / ".join([str(r["Quadra"]), str(r["Lote"])]) if (r["Quadra"] or r["Lote"]) else "—"
-        data.append([
-            Paragraph(r["Data"], cell), Paragraph(str(r["Loteamento"]), cell),
-            Paragraph(ql, cell), Paragraph(str(r["Cliente"]) or "—", cell),
-            Paragraph(str(r["Corretor"]), cell), Paragraph(_fmt_brl(r["Valor da venda"]), cell),
-            Paragraph(_fmt_brl(r["Comissão total"]), cell), Paragraph(_fmt_brl(r["Comissão corretor"]), cell),
-            Paragraph(_fmt_brl(r["Comissão imobiliária"]), cell), Paragraph(_fmt_brl(r["Entrada"]), cell),
-            Paragraph(_fmt_brl(r["Já recebido"]), cell), Paragraph(_fmt_brl(r["A receber"]), cell),
-            Paragraph(r["Status"], cell),
-        ])
-    data.append([
-        Paragraph("<b>TOTAIS</b>", cell), "", "", "", "",
-        Paragraph(f"<b>{_fmt_brl(total_vendido)}</b>", cell),
-        Paragraph(f"<b>{_fmt_brl(total_com)}</b>", cell),
-        Paragraph(f"<b>{_fmt_brl(total_corr)}</b>", cell),
-        Paragraph(f"<b>{_fmt_brl(total_imob)}</b>", cell), "",
-        Paragraph(f"<b>{_fmt_brl(total_recv)}</b>", cell),
-        Paragraph(f"<b>{_fmt_brl(total_pend)}</b>", cell), "",
-    ])
+        line = []
+        for c in cols:
+            v = r.get(c, "")
+            txt = _fmt_brl(v) if c in MONEY_COLS else (str(v) if v not in (None, "") else "—")
+            line.append(Paragraph(txt, cell))
+        data.append(line)
+    totals = []
+    for i, c in enumerate(cols):
+        if c in MONEY_COLS:
+            totals.append(Paragraph(f"<b>{_fmt_brl(sum((r.get(c) or 0) for r in rows))}</b>", cell))
+        elif i == 0:
+            totals.append(Paragraph("<b>TOTAIS</b>", cell))
+        else:
+            totals.append("")
+    data.append(totals)
 
     table = Table(data, repeatRows=1)
     table.setStyle(TableStyle([
@@ -2463,7 +2717,6 @@ async def export_pdf(month: Optional[int] = None, year: Optional[int] = None,
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f3f6f5")]),
         ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#efe7d4")),
-        ("SPAN", (0, -1), (4, -1)),
     ]))
     elements.append(table)
     doc.build(elements)

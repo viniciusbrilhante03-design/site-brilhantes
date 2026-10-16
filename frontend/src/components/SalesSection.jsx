@@ -14,11 +14,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { brl, formatDateBR, splitComm } from "@/lib/format";
-import { Search, Pencil, Trash2, Wallet, Plus, Upload, Paperclip, Download, FileSpreadsheet, FileText, SlidersHorizontal, X, Copy, ArrowRightLeft, Ban } from "lucide-react";
+import { Search, Pencil, Trash2, Wallet, Plus, Upload, Paperclip, Download, SlidersHorizontal, X, Copy, ArrowRightLeft, Ban } from "lucide-react";
 
 const ALL = "all";
 const emptyFilters = { lot: ALL, broker: ALL, status: ALL, client: "", quadra: "", lote: "", start: "", end: "" };
@@ -28,7 +25,7 @@ function statusOf(s) {
   return (s.installments || []).some((i) => !i.received) ? "receber" : "quitado";
 }
 
-export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicate, onDelete, onTransfer, onCancel, onOpenInstallments, onImport, onExport, onOpenAttachments }) {
+export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicate, onDelete, onTransfer, onCancel, onOpenInstallments, onImport, onOpenExport, onOpenAttachments }) {
   const [q, setQ] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [f, setF] = useState(emptyFilters);
@@ -97,21 +94,9 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
             <SlidersHorizontal className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Filtros</span>
             {activeCount > 0 && <Badge className="ml-1.5 h-5 min-w-5 px-1 bg-background text-foreground">{activeCount}</Badge>}
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button data-testid="btn-export-menu" variant="outline" className="shrink-0">
-                <Download className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Exportar</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem data-testid="btn-export-xlsx" onClick={() => onExport("xlsx")}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel (.xlsx)
-              </DropdownMenuItem>
-              <DropdownMenuItem data-testid="btn-export-pdf" onClick={() => onExport("pdf")}>
-                <FileText className="h-4 w-4 mr-2" /> PDF
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button data-testid="btn-open-export" variant="outline" className="shrink-0" onClick={onOpenExport}>
+            <Download className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Exportar</span>
+          </Button>
           <Button data-testid="btn-import-sales" variant="outline" onClick={onImport} className="shrink-0">
             <Upload className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Importar</span>
           </Button>

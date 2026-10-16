@@ -13,3 +13,17 @@ crons:
     method: POST
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     enabled: true
+  - name: appointments-daily
+    description: "Avisa o corretor e o gestor dos compromissos da agenda do dia (visitas, plantão, ligações)"
+    cron: "0 11 * * *"
+    endpoint: "{{BASE_URL}}/api/cron/appointments"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true
+  - name: lot-reminder
+    description: "Dia 3 de cada mês, lembra o gestor de atualizar as tabelas e dados técnicos dos loteamentos"
+    cron: "0 12 3 * *"
+    endpoint: "{{BASE_URL}}/api/cron/lot-reminder"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

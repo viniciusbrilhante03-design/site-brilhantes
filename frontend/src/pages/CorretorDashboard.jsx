@@ -22,7 +22,9 @@ import BirthdaysDialog from "@/components/BirthdaysDialog";
 import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import NotificationsBell from "@/components/NotificationsBell";
 import CelebrationDialog from "@/components/CelebrationDialog";
-import { LogOut, Moon, Sun, CalendarDays, KeyRound, TrendingUp, Wallet, Clock, Hash, UserRound, Cake } from "lucide-react";
+import AgendaDialog from "@/components/AgendaDialog";
+import ExportDialog from "@/components/ExportDialog";
+import { LogOut, Moon, Sun, CalendarDays, KeyRound, TrendingUp, Wallet, Clock, Hash, UserRound, Cake, CalendarClock } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -44,6 +46,8 @@ export default function CorretorDashboard() {
   const [dupOpen, setDupOpen] = useState(false);
   const [dupPayload, setDupPayload] = useState(null);
   const [celebrateSale, setCelebrateSale] = useState(null);
+  const [agendaOpen, setAgendaOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const params = useMemo(() => (month === ALL ? { year } : { month, year }), [month, year]);
 
@@ -78,9 +82,9 @@ export default function CorretorDashboard() {
     onError: () => toast.error("Erro ao registrar baixa."),
   });
 
-  const handleExport = async (type) => {
+  const handleExport = async (type, columns) => {
     try {
-      const res = await api.get(`/export/${type}`, { params, responseType: "blob" });
+      const res = await api.get(`/export/${type}`, { params: { ...params, ...(columns?.length ? { columns: columns.join("||") } : {}) }, responseType: "blob" });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement("a"); a.href = url; a.download = `minhas-vendas.${type}`; a.click();
       URL.revokeObjectURL(url);
@@ -117,6 +121,9 @@ export default function CorretorDashboard() {
               <SelectContent>{YEARS.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
             </Select>
             <Button variant="outline" size="icon" className="h-9 w-9" onClick={theme.toggle}>{theme.dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</Button>
+            <Button data-testid="btn-open-agenda" variant="outline" className="h-9 gap-1.5" onClick={() => setAgendaOpen(true)}>
+              <CalendarClock className="h-4 w-4" /><span className="hidden md:inline">Agenda</span>
+            </Button>
             <Button data-testid="btn-open-birthdays" variant="outline" className="h-9 gap-1.5" onClick={() => setBirthdaysOpen(true)}>
               <Cake className="h-4 w-4" /><span className="hidden md:inline">Aniversariantes</span>
             </Button>
@@ -165,7 +172,7 @@ export default function CorretorDashboard() {
               onDelete={(id) => deleteMut.mutate(id)}
               onOpenInstallments={(x) => setInstSale(x)}
               onImport={() => toast.info("Importação disponível no painel do gestor.")}
-              onExport={handleExport}
+              onOpenExport={() => setExportOpen(true)}
               onOpenAttachments={(x) => setAttachSale(x)}
             />
           </div>
@@ -194,6 +201,8 @@ export default function CorretorDashboard() {
         photoMap={{ [(display || "").toLowerCase()]: user?.picture }}
         onOpenChange={(v) => { if (!v) setCelebrateSale(null); }}
       />
+      <AgendaDialog open={agendaOpen} onOpenChange={setAgendaOpen} clients={clientsQ.data || []} />
+      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />
     </div>
   );
 }

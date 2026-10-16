@@ -27,6 +27,8 @@ import AttachmentsDialog from "@/components/AttachmentsDialog";
 import TeamDialog from "@/components/TeamDialog";
 import NotificationsBell from "@/components/NotificationsBell";
 import CelebrationDialog from "@/components/CelebrationDialog";
+import AgendaDialog from "@/components/AgendaDialog";
+import ExportDialog from "@/components/ExportDialog";
 import ClientsDialog from "@/components/ClientsDialog";
 import BirthdaysDialog from "@/components/BirthdaysDialog";
 import DuplicatesDialog from "@/components/DuplicatesDialog";
@@ -35,7 +37,7 @@ import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import GoalsCard from "@/components/GoalsCard";
 import GoalsDialog from "@/components/GoalsDialog";
 
-import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake, Merge, Wallet } from "lucide-react";
+import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake, Merge, Wallet, CalendarClock } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -65,6 +67,8 @@ export default function Dashboard() {
   const [dupOpen, setDupOpen] = useState(false);
   const [dupPayload, setDupPayload] = useState(null);
   const [celebrateSale, setCelebrateSale] = useState(null);
+  const [agendaOpen, setAgendaOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const params = useMemo(() => {
     const p = { year };
@@ -189,10 +193,10 @@ export default function Dashboard() {
     onError: () => toast.error("Erro ao cancelar venda."),
   });
 
-  const handleExport = async (type) => {
+  const handleExport = async (type, columns) => {
     try {
       toast.info("Gerando relatório...");
-      const res = await api.get(`/export/${type}`, { params, responseType: "blob" });
+      const res = await api.get(`/export/${type}`, { params: { ...params, ...(columns?.length ? { columns: columns.join("||") } : {}) }, responseType: "blob" });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement("a");
       a.href = url;
@@ -247,6 +251,11 @@ export default function Dashboard() {
             <Button data-testid="btn-open-clients" variant="outline" className="h-9 gap-1.5"
               onClick={() => setClientsOpen(true)}>
               <Contact className="h-4 w-4" /><span className="hidden md:inline">Clientes</span>
+            </Button>
+
+            <Button data-testid="btn-open-agenda" variant="outline" className="h-9 gap-1.5"
+              onClick={() => setAgendaOpen(true)}>
+              <CalendarClock className="h-4 w-4" /><span className="hidden md:inline">Agenda</span>
             </Button>
 
             <Button data-testid="btn-open-birthdays" variant="outline" className="h-9 gap-1.5"
@@ -326,7 +335,7 @@ export default function Dashboard() {
           onCancel={(s) => setCancelSale(s)}
           onOpenInstallments={(s) => setInstSale(s)}
           onImport={() => setImportOpen(true)}
-          onExport={handleExport}
+          onOpenExport={() => setExportOpen(true)}
           onOpenAttachments={(s) => setAttachSale(s)}
         />
       </main>
@@ -381,6 +390,8 @@ export default function Dashboard() {
         photoMap={photoMap}
         onOpenChange={(v) => { if (!v) setCelebrateSale(null); }}
       />
+      <AgendaDialog open={agendaOpen} onOpenChange={setAgendaOpen} clients={clientsQ.data || []} />
+      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />
       <DuplicateWarningDialog
         open={dupOpen}
         onOpenChange={(v) => { setDupOpen(v); if (!v) setDupPayload(null); }}
