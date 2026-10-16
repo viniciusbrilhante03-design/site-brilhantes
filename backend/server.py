@@ -627,6 +627,119 @@ def _get_openai():
     return _openai_client
 
 
+_LOT_STATUS = {"nao_iniciada": "Não iniciada", "em_andamento": "Em andamento",
+               "fase_final": "Fase final", "concluida": "Concluída", "entregue": "Entregue"}
+_LOT_TIPO = {"aberto": "Loteamento aberto", "fechado": "Loteamento fechado"}
+_LOT_CORRECAO = {"sem": "Sem correção", "ipca": "IPCA", "igpm": "IGP-M"}
+_LOT_PERIOD = {"mensal": "Mensal", "anual": "Anual"}
+
+
+def _lot_specs_to_text(doc: dict) -> str:
+    s = doc.get("specs") or {}
+    out = []
+
+    t = s.get("tecnicos") or {}
+    tech = []
+    for key, lbl, suf in [("metragem_min", "Metragem mínima", ""), ("metragem_max", "Metragem máxima", ""),
+                          ("area_total", "Área total do empreendimento", ""), ("qtd_lotes", "Quantidade de lotes", ""),
+                          ("qtd_quadras", "Quantidade de quadras", "")]:
+        if t.get(key):
+            tech.append(f"{lbl}: {t[key]}")
+    if t.get("tipo"):
+        tech.append(f"Tipo: {_LOT_TIPO.get(t['tipo'], t['tipo'])}")
+    if t.get("liberacao_pct"):
+        tech.append(f"Liberação de construção: {t['liberacao_pct']}% do lote pago")
+    if t.get("prazo_construcao"):
+        tech.append(f"Prazo para construção: {t['prazo_construcao']}")
+    if t.get("restricoes"):
+        tech.append(f"Restrições/padrão construtivo: {t['restricoes']}")
+    if tech:
+        out.append("DADOS TÉCNICOS:\n" + "\n".join(f"- {x}" for x in tech))
+
+    infra = s.get("infraestrutura") or {}
+    items = [i for i in (infra.get("items") or []) if i and i.lower() != "outro"]
+    if infra.get("outro"):
+        items.append(infra["outro"])
+    if items:
+        out.append("INFRAESTRUTURA:\n" + ", ".join(items))
+
+    o = s.get("obra") or {}
+    if o.get("status"):
+        obra = [f"Status: {_LOT_STATUS.get(o['status'], o['status'])}"]
+        if o.get("percentual"):
+            obra.append(f"Percentual: {o['percentual']}%")
+        if o.get("previsao"):
+            obra.append(f"Previsão de entrega: {o['previsao']}")
+        if o.get("data_entrega"):
+            obra.append(f"Data de entrega: {o['data_entrega']}")
+        if o.get("observacao"):
+            obra.append(f"Obs: {o['observacao']}")
+        out.append("STATUS DA OBRA:\n" + "\n".join(f"- {x}" for x in obra))
+
+    loc = s.get("localizacao") or {}
+    locl = []
+    for key, lbl in [("cidade", "Cidade"), ("estado", "Estado"), ("bairro", "Bairro/localidade"),
+                     ("endereco", "Endereço/referência"), ("maps", "Google Maps"), ("dist_centro", "Distância do centro"),
+                     ("dist_praia", "Distância da praia"), ("dist_pontos", "Distância de pontos relevantes"),
+                     ("acessos", "Principais acessos/rodovias")]:
+        if loc.get(key):
+            locl.append(f"{lbl}: {loc[key]}")
+    if locl:
+        out.append("LOCALIZAÇÃO:\n" + "\n".join(f"- {x}" for x in locl))
+
+    c = s.get("comercial") or {}
+    com = []
+    if c.get("valor_a_partir"):
+        ref = f" (referente a {c['valor_ref']})" if c.get("valor_ref") else ""
+        com.append(f"Valor a partir de R$ {c['valor_a_partir']}{ref}")
+    if c.get("entrada_minima"):
+        com.append(f"Entrada mínima: {c['entrada_minima']}")
+    if c.get("max_parcelas"):
+        com.append(f"Quantidade máxima de parcelas: {c['max_parcelas']}")
+    if c.get("valor_parcela_inicial"):
+        com.append(f"Valor inicial da parcela: {c['valor_parcela_inicial']}")
+    com.append(f"Financiamento: {c.get('financiamento') or 'Próprio do loteamento'}")
+    if c.get("correcao"):
+        corr = c.get("correcao_outro") if c["correcao"] == "outro" else _LOT_CORRECAO.get(c["correcao"], c["correcao"])
+        if corr:
+            per = ""
+            if c.get("periodicidade"):
+                per = c.get("periodicidade_outra") if c["periodicidade"] == "outra" else _LOT_PERIOD.get(c["periodicidade"], c["periodicidade"])
+            com.append(f"Correção monetária: {corr}" + (f" ({per})" if per else ""))
+    if c.get("juros") == "sem":
+        com.append("Juros: Sem juros")
+    elif c.get("juros") == "com":
+        j = "Com juros"
+        if c.get("juros_pct"):
+            j += f" ({c['juros_pct']}%)"
+        if c.get("juros_tipo") == "embutidos":
+            j += " — embutidos (Tabela Price)"
+        elif c.get("juros_tipo") == "nao_embutidos":
+            j += " — não embutidos (Tabela SAC)"
+        com.append(j)
+    if c.get("balao") == "possui":
+        bal = []
+        for key, lbl in [("baloes_qtd", "Quantidade"), ("baloes_periodicidade", "Periodicidade"),
+                         ("baloes_valor", "Valor/percentual"), ("baloes_vencimentos", "Vencimentos")]:
+            if c.get(key):
+                bal.append(f"{lbl}: {c[key]}")
+        com.append("Balão: Possui" + (f" ({'; '.join(bal)})" if bal else ""))
+    elif c.get("balao") == "nao":
+        com.append("Balão: Não possui")
+    if c.get("condicoes_especiais"):
+        com.append(f"Condições especiais: {c['condicoes_especiais']}")
+    if c.get("diferenciais"):
+        com.append(f"Diferenciais: {c['diferenciais']}")
+    if com:
+        out.append("INFORMAÇÕES COMERCIAIS:\n" + "\n".join(f"- {x}" for x in com))
+
+    # campos técnicos livres antigos (compat)
+    for f in (doc.get("fields") or []):
+        if f.get("value"):
+            out.append(f"{f.get('label')}: {f['value']}")
+    return "\n\n".join(out).strip()
+
+
 class LotField(BaseModel):
     id: Optional[str] = ""
     label: str = ""
@@ -637,6 +750,7 @@ class LoteamentoDetails(BaseModel):
     fields: List[LotField] = []
     copy: Optional[str] = ""
     ai_training: Optional[str] = ""
+    specs: Optional[dict] = None
 
 
 class AiAsk(BaseModel):
@@ -652,6 +766,7 @@ async def get_loteamento_details(lot_id: str, user: dict = Depends(get_current_u
     doc.setdefault("fields", [])
     doc.setdefault("copy", "")
     doc.setdefault("ai_training", "")
+    doc.setdefault("specs", {})
     return doc
 
 
@@ -669,6 +784,7 @@ async def update_loteamento_details(lot_id: str, data: LoteamentoDetails, user: 
                        "label": label, "value": (f.value or "").strip()})
     upd = {"fields": fields, "copy": (data.copy or "").strip(),
            "ai_training": (data.ai_training or "").strip(),
+           "specs": data.specs or {},
            "details_updated_at": datetime.now(timezone.utc).isoformat()}
     await db.loteamentos.update_one({"id": lot_id}, {"$set": upd})
     return {**existing, **upd}
@@ -683,15 +799,14 @@ async def ask_loteamento_ai(lot_id: str, data: AiAsk, user: dict = Depends(get_c
     doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Loteamento não encontrado")
-    fields = doc.get("fields") or []
-    ctx = "\n".join(f"- {f.get('label')}: {f.get('value')}" for f in fields if f.get("value")) or "(nenhum campo técnico cadastrado)"
+    ctx = _lot_specs_to_text(doc) or "(nenhuma informação cadastrada)"
     system = (
         f"Você é um assistente especialista no loteamento '{doc.get('name')}' da Brilhante's Imóveis. "
         "Responda SEMPRE em português, de forma clara e objetiva, para ajudar o corretor a atender o cliente. "
-        "Use SOMENTE os dados técnicos e as informações de treino fornecidos abaixo. "
+        "Use SOMENTE os dados e as informações de treino fornecidos abaixo. "
         "Se a informação não estiver nos dados, diga claramente que ela não foi informada e sugira confirmar com o gestor. "
         "Nunca invente preço, metragem, disponibilidade, prazos, documentação ou condições comerciais."
-        f"\n\nDADOS TÉCNICOS DO LOTEAMENTO:\n{ctx}"
+        f"\n\nINFORMAÇÕES DO LOTEAMENTO:\n{ctx}"
     )
     if doc.get("ai_training"):
         system += f"\n\nINFORMAÇÕES EXTRAS (treino do gestor):\n{doc['ai_training']}"
@@ -710,6 +825,39 @@ async def ask_loteamento_ai(lot_id: str, data: AiAsk, user: dict = Depends(get_c
         logger.warning(f"openai request failed: {type(e).__name__}: {str(e)[:150]}")
         raise HTTPException(status_code=502, detail="Serviço de IA indisponível no momento.")
     return {"answer": answer}
+
+
+@api_router.post("/loteamentos/{lot_id}/generate-copy")
+async def generate_lot_copy(lot_id: str, user: dict = Depends(require_master)):
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=400, detail="IA não configurada. Peça ao gestor para cadastrar a chave da OpenAI.")
+    doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Loteamento não encontrado")
+    ctx = _lot_specs_to_text(doc)
+    training = doc.get("ai_training") or ""
+    if not ctx.strip() and not training.strip():
+        raise HTTPException(status_code=400, detail="Cadastre as informações do loteamento antes de gerar a copy.")
+    system = (
+        "Você é redator de marketing imobiliário da Brilhante's Imóveis. Gere um texto de divulgação curto, "
+        "atrativo e pronto para postar no WhatsApp/Instagram sobre o loteamento, em português do Brasil. "
+        "Destaque infraestrutura, localização e condições de pagamento. Use emojis com moderação e uma chamada "
+        "para ação no final. Use SOMENTE os dados fornecidos — nunca invente valores, metragens ou condições. "
+        "Máximo de ~120 palavras. Responda apenas com o texto da copy."
+    )
+    user_msg = f"Loteamento: {doc.get('name')}\n\nDADOS:\n{ctx}"
+    if training:
+        user_msg += f"\n\nINFORMAÇÕES EXTRAS:\n{training}"
+    try:
+        comp = await _get_openai().chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
+            temperature=0.7, max_tokens=500)
+        copy = (comp.choices[0].message.content or "").strip()
+    except Exception as e:
+        logger.warning(f"openai copy failed: {type(e).__name__}: {str(e)[:150]}")
+        raise HTTPException(status_code=502, detail="Serviço de IA indisponível no momento.")
+    return {"copy": copy}
 
 
 async def _process_lot_reminder():
@@ -2364,6 +2512,78 @@ def _parse_ai_json(raw: str):
     return data if isinstance(data, list) else []
 
 
+def _parse_ai_obj(raw: str) -> dict:
+    import json
+    s = (raw or "").strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```[a-zA-Z]*\n?", "", s)
+        s = re.sub(r"\n?```$", "", s).strip()
+    m = re.search(r"\{.*\}", s, re.DOTALL)
+    if m:
+        s = m.group(0)
+    try:
+        data = json.loads(s)
+    except (ValueError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+IMPORT_FIELDS = ["property_name", "quadra", "lote", "client_name", "client_phone", "client_email",
+                 "client_cpf", "client_birthdate", "broker_name", "sale_date", "sale_value",
+                 "commission_rate", "commission_value", "num_parcelas"]
+IMPORT_FIELD_LABELS = {
+    "property_name": "Loteamento", "quadra": "Quadra", "lote": "Lote", "client_name": "Cliente",
+    "client_phone": "Telefone", "client_email": "E-mail", "client_cpf": "CPF",
+    "client_birthdate": "Data de nascimento", "broker_name": "Corretor", "sale_date": "Data da venda",
+    "sale_value": "Valor da venda", "commission_rate": "Comissão %", "commission_value": "Comissão R$",
+    "num_parcelas": "Nº de parcelas",
+}
+
+
+async def _ai_suggest_mapping(headers: list) -> dict:
+    headers = [h for h in headers if str(h).strip()]
+    if not headers:
+        return {}
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        key = os.environ.get("EMERGENT_LLM_KEY")
+        if not key:
+            return {}
+        chat = LlmChat(api_key=key, session_id=f"map_{uuid.uuid4().hex[:8]}",
+                       system_message="Você mapeia cabeçalhos de planilhas de vendas de loteamentos para campos canônicos. Responda APENAS com JSON.").with_model("gemini", "gemini-2.5-flash")
+        prompt = (
+            "Para cada cabeçalho de coluna abaixo, diga a qual campo canônico ele corresponde. "
+            f"Campos possíveis: {', '.join(IMPORT_FIELDS)}, ou \"ignorar\" se não corresponder a nenhum. "
+            "Responda APENAS com um objeto JSON no formato {\"cabeçalho\": \"campo\"}.\n\nCABEÇALHOS:\n"
+            + "\n".join(f"- {h}" for h in headers)
+        )
+        resp = await chat.send_message(UserMessage(text=prompt))
+        raw = resp if isinstance(resp, str) else getattr(resp, "content", str(resp))
+        obj = _parse_ai_obj(raw)
+        return {str(k): v for k, v in obj.items() if v in IMPORT_FIELDS}
+    except Exception as e:
+        logger.warning(f"ai mapping failed: {type(e).__name__}")
+        return {}
+
+
+def _read_headers(content: bytes, fname: str) -> list:
+    try:
+        if fname.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(io.BytesIO(content), sheet_name=0, nrows=0)
+            return [str(c) for c in df.columns]
+        if fname.endswith(".csv"):
+            try:
+                txt = content.decode("utf-8")
+            except UnicodeDecodeError:
+                txt = content.decode("latin-1", errors="ignore")
+            first = txt.splitlines()[0] if txt.strip() else ""
+            sep = ";" if first.count(";") > first.count(",") else ","
+            return [h.strip().strip('"') for h in first.split(sep) if h.strip()]
+    except Exception:
+        return []
+    return []
+
+
 AI_IMPORT_PROMPT = (
     "Extraia TODAS as vendas e responda APENAS com um array JSON "
     "(sem texto extra, sem markdown). Cada item deve ter os campos: property_name (loteamento), "
@@ -2422,6 +2642,7 @@ def _dup_key(d: dict) -> str:
 async def import_ai_preview(file: UploadFile = File(...), user: dict = Depends(require_master)):
     content = await file.read()
     fname = (file.filename or "").lower()
+    column_mapping = {}
     if fname.endswith(IMAGE_EXTS):
         rows = await _ai_extract_sales_from_image(content)
     else:
@@ -2431,6 +2652,10 @@ async def import_ai_preview(file: UploadFile = File(...), user: dict = Depends(r
         if len(text) > 60000:
             text = text[:60000]
         rows = await _ai_extract_sales(text)
+        headers = _read_headers(content, fname)
+        if headers:
+            suggested = await _ai_suggest_mapping(headers)
+            column_mapping = {h: {"field": f, "label": IMPORT_FIELD_LABELS.get(f, f)} for h, f in suggested.items()}
     existing = await db.sales.find({}, {"_id": 0}).to_list(5000)
     existing_keys = {_dup_key(s): s.get("id") for s in existing}
     lot_set = {(l.get("name") or "").strip().lower() for l in await db.loteamentos.find({}, {"_id": 0}).to_list(3000)}
@@ -2464,6 +2689,7 @@ async def import_ai_preview(file: UploadFile = File(...), user: dict = Depends(r
         out.append(item)
     return {
         "rows": out, "total": len(out), "duplicates": sum(1 for r in out if r["is_duplicate"]),
+        "column_mapping": column_mapping,
         "mapping": {
             "cpf": any(r.get("client_cpf") for r in out),
             "birthdate": any(r.get("client_birthdate") for r in out),

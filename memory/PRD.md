@@ -336,6 +336,27 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
   UI (screenshot gestor): 3 campos carregados, drag handles, chat respondendo "status da obra".
 - PENDENTE: FASE 9 (testes finais E2E). REPUBLICAR p/ produção.
 
+### Iteração 30 (2026-06 fork) — Loteamento estruturado + Copy IA + Mapeamento na importação ✅ [checkpoint]
+**Informações do loteamento (estruturado, sem digitação solta):**
+- Campo `specs` (objeto estruturado, aditivo no MESMO doc `loteamentos` — sem DB paralela). Seções: tecnicos
+  (metragem min/max, área, qtd lotes/quadras, tipo aberto/fechado, liberação %, prazo, restrições), infraestrutura
+  (checkbox múltiplo com 21 opções + "Outro"), obra (status + campos condicionais %/previsão/data/obs),
+  localizacao (cidade/estado/bairro/endereço/maps/distâncias/acessos), comercial (valor a partir + referência SEPARADOS,
+  entrada, parcelas, financiamento, correção IPCA/IGP-M/outro + periodicidade, juros com→% + embutidos=Price / não embutidos=SAC,
+  balão possui→campos, condições especiais, diferenciais).
+- Frontend `LoteamentoSpecsForm.jsx`: Accordion com Select/RadioGroup/Checkbox e campos condicionais (só aparecem quando a
+  opção é selecionada). `LoteamentoDetailsDialog` reescrito: aba Informações (specs + Copy + Treino) e aba IA. Mostra
+  "última atualização" (`details_updated_at`).
+- `_lot_specs_to_text()` converte specs em texto legível e alimenta a IA Especialista E a geração de Copy.
+**Copy com 1 clique:** POST `/loteamentos/{id}/generate-copy` (OpenAI) gera texto de divulgação p/ WhatsApp/Instagram SÓ com
+  os dados cadastrados; botão "Gerar com IA" (salva antes) + botão Copiar.
+**Importação — sugestão de mapeamento por IA:** preview agora retorna `column_mapping` (Gemini mapeia cada cabeçalho da
+  planilha → campo canônico via `_ai_suggest_mapping`/`_read_headers`); ImportDialog exibe "Sugestão de mapeamento da IA".
+- Testado (curl): specs salvam (tipo/infra/updated); IA deriva "0,5% embutidos → Tabela Price, IPCA anual"; copy gerada
+  coerente; mapeamento mapeou 9/9 colunas (Empreendimento→Loteamento, CPF→CPF, Nascimento→Data de nascimento...).
+  UI (screenshot gestor): formulário estruturado carregando valores, 5 infra marcadas, seções e condicionais OK.
+- PENDENTE: FASE 9 (testes finais E2E). REPUBLICAR p/ produção.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

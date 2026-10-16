@@ -8,19 +8,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { GripVertical, Plus, Trash2, Sparkles, Send, Megaphone, GraduationCap } from "lucide-react";
+import { Sparkles, Send, Megaphone, GraduationCap, Wand2, Loader2 } from "lucide-react";
+import LoteamentoSpecsForm, { mergeSpecs, EMPTY_SPECS } from "@/components/LoteamentoSpecsForm";
 
-const SUGGESTED = ["Área total", "Metragem mínima do lote", "Infraestrutura", "Status da obra", "Documentação", "Formas de pagamento", "Localização"];
+function fmtUpdated(iso) {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("pt-BR") + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  } catch { return null; }
+}
 
 export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
   const open = !!lot;
   const qc = useQueryClient();
-  const [fields, setFields] = useState([]);
+  const [specs, setSpecs] = useState(EMPTY_SPECS);
   const [copy, setCopy] = useState("");
   const [training, setTraining] = useState("");
-  const dragIdx = useRef(null);
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const [genLoading, setGenLoading] = useState(false);
 
-  // chat
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const scrollRef = useRef(null);
@@ -33,23 +40,23 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
 
   useEffect(() => {
     if (detailQ.data) {
-      setFields((detailQ.data.fields || []).map((f) => ({ ...f })));
+      setSpecs(mergeSpecs(detailQ.data.specs));
       setCopy(detailQ.data.copy || "");
       setTraining(detailQ.data.ai_training || "");
+      setUpdatedAt(detailQ.data.details_updated_at || null);
     }
   }, [detailQ.data]);
 
-  useEffect(() => {
-    if (!open) { setMessages([]); setInput(""); }
-  }, [open]);
-
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
+  useEffect(() => { if (!open) { setMessages([]); setInput(""); } }, [open]);
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
   const saveMut = useMutation({
-    mutationFn: () => api.put(`/loteamentos/${lot.id}/details`, { fields, copy, ai_training: training }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["lot-details", lot.id] }); toast.success("Informações do loteamento salvas!"); },
+    mutationFn: () => api.put(`/loteamentos/${lot.id}/details`, { specs, copy, ai_training: training }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["lot-details", lot.id] });
+      setUpdatedAt(res.data.details_updated_at || new Date().toISOString());
+      toast.success("Informações do loteamento salvas!");
+    },
     onError: () => toast.error("Erro ao salvar."),
   });
 
@@ -62,20 +69,22 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
     },
   });
 
-  const addField = (label = "") => setFields((f) => [...f, { id: `new_${Date.now()}`, label, value: "" }]);
-  const setField = (i, k, v) => setFields((f) => f.map((x, idx) => (idx === i ? { ...x, [k]: v } : x)));
-  const removeField = (i) => setFields((f) => f.filter((_, idx) => idx !== i));
+  const generateCopy = async () => {
+    setGenLoading(true);
+    try {
+      await api.put(`/loteamentos/${lot.id}/details`, { specs, copy, ai_training: training });
+      const res = await api.post(`/loteamentos/${lot.id}/generate-copy`);
+      setCopy(res.data.copy || "");
+      toast.success("Copy gerada pela IA! Revise e salve.");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Não foi possível gerar a copy.");
+    } finally { setGenLoading(false); }
+  };
 
-  const onDrop = (i) => {
-    const from = dragIdx.current;
-    if (from === null || from === i) return;
-    setFields((f) => {
-      const arr = [...f];
-      const [moved] = arr.splice(from, 1);
-      arr.splice(i, 0, moved);
-      return arr;
-    });
-    dragIdx.current = null;
+  const copyToClipboard = () => {
+    if (!copy) return;
+    navigator.clipboard?.writeText(copy);
+    toast.success("Copy copiada!");
   };
 
   const send = () => {
@@ -86,68 +95,52 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
     askMut.mutate(msg);
   };
 
+  const lastUpdate = fmtUpdated(updatedAt);
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onOpenChange(false); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="lot-details-dialog">
         <DialogHeader>
           <DialogTitle className="font-heading text-xl">{lot?.name}</DialogTitle>
-          <DialogDescription>Cadastre os dados técnicos, treine a IA e tire dúvidas sobre o loteamento.</DialogDescription>
+          <DialogDescription>
+            Selecione as informações do loteamento, gere a copy e tire dúvidas com a IA.
+            {lastUpdate && <span className="block text-[11px] mt-0.5 text-muted-foreground">Última atualização: {lastUpdate}</span>}
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="dados">
           <TabsList>
-            <TabsTrigger value="dados" data-testid="lot-tab-dados">Dados & Copy</TabsTrigger>
+            <TabsTrigger value="dados" data-testid="lot-tab-dados">Informações</TabsTrigger>
             <TabsTrigger value="ia" data-testid="lot-tab-ia"><Sparkles className="h-4 w-4 mr-1" /> IA Especialista</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dados" className="space-y-4 mt-3">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Campos técnicos</Label>
-                <span className="text-[11px] text-muted-foreground">Arraste para reordenar</span>
-              </div>
-              <div className="space-y-2" data-testid="lot-fields">
-                {fields.map((f, i) => (
-                  <div key={f.id || i} data-testid={`lot-field-${i}`}
-                    draggable
-                    onDragStart={() => { dragIdx.current = i; }}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => onDrop(i)}
-                    className="flex items-center gap-2 rounded-lg border border-border/60 p-2 bg-card">
-                    <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab shrink-0" data-testid={`lot-field-drag-${i}`} />
-                    <Input data-testid={`lot-field-label-${i}`} value={f.label} placeholder="Ex: Metragem mínima"
-                      onChange={(e) => setField(i, "label", e.target.value)} className="h-8 w-[40%]" />
-                    <Input data-testid={`lot-field-value-${i}`} value={f.value} placeholder="Ex: 200 m²"
-                      onChange={(e) => setField(i, "value", e.target.value)} className="h-8 flex-1" />
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive shrink-0"
-                      data-testid={`lot-field-remove-${i}`} onClick={() => removeField(i)}><Trash2 className="h-4 w-4" /></Button>
-                  </div>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" data-testid="lot-add-field" onClick={() => addField()}>
-                  <Plus className="h-3.5 w-3.5" /> Adicionar campo
-                </Button>
-                {SUGGESTED.filter((s) => !fields.some((f) => f.label === s)).map((s) => (
-                  <Button key={s} variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => addField(s)}>+ {s}</Button>
-                ))}
-              </div>
-            </div>
+            <LoteamentoSpecsForm value={specs} onChange={setSpecs} />
 
             <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5"><Megaphone className="h-4 w-4" /> Copy (texto de divulgação)</Label>
-              <Textarea data-testid="lot-copy" value={copy} onChange={(e) => setCopy(e.target.value)} rows={3}
-                placeholder="Texto pronto para divulgar o loteamento nas redes/WhatsApp." />
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5"><Megaphone className="h-4 w-4" /> Copy (texto de divulgação)</Label>
+                <div className="flex gap-1.5">
+                  <Button data-testid="lot-gen-copy" variant="outline" size="sm" className="h-7 text-xs gap-1" disabled={genLoading} onClick={generateCopy}>
+                    {genLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />} Gerar com IA
+                  </Button>
+                  {copy && <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={copyToClipboard}>Copiar</Button>}
+                </div>
+              </div>
+              <Textarea data-testid="lot-copy" value={copy} onChange={(e) => setCopy(e.target.value)} rows={4}
+                placeholder="Clique em 'Gerar com IA' para criar um texto pronto para WhatsApp/Instagram a partir das informações acima." />
             </div>
 
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5"><GraduationCap className="h-4 w-4" /> Treinar a IA (informações extras)</Label>
-              <Textarea data-testid="lot-training" value={training} onChange={(e) => setTraining(e.target.value)} rows={4}
-                placeholder="Escreva aqui tudo que a IA deve saber para ajudar o corretor (regras, diferenciais, respostas a perguntas comuns...)." />
+              <Textarea data-testid="lot-training" value={training} onChange={(e) => setTraining(e.target.value)} rows={3}
+                placeholder="Escreva aqui o que a IA deve saber além das informações acima (regras, diferenciais, respostas a dúvidas comuns...)." />
             </div>
 
             <div className="flex justify-end">
-              <Button data-testid="lot-save-details" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>Salvar informações</Button>
+              <Button data-testid="lot-save-details" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>
+                {saveMut.isPending ? "Salvando..." : "Salvar informações"}
+              </Button>
             </div>
           </TabsContent>
 
@@ -157,7 +150,7 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
                 {messages.length === 0 && (
                   <div className="text-center text-sm text-muted-foreground py-10">
                     <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    Pergunte sobre <b>{lot?.name}</b>. A IA responde com base nos dados técnicos cadastrados.
+                    Pergunte sobre <b>{lot?.name}</b>. A IA responde com base nas informações cadastradas.
                   </div>
                 )}
                 {messages.map((m, i) => (
@@ -177,7 +170,7 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
                 </Button>
               </div>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-2">A IA usa só os dados cadastrados na aba "Dados & Copy". Salve antes de perguntar.</p>
+            <p className="text-[11px] text-muted-foreground mt-2">A IA usa só as informações da aba "Informações". Salve antes de perguntar.</p>
           </TabsContent>
         </Tabs>
       </DialogContent>

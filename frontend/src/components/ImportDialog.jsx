@@ -68,7 +68,7 @@ export default function ImportDialog({ open, onOpenChange, onImported }) {
       const fd = new FormData();
       fd.append("file", aiFile);
       const res = await api.post("/sales/import-ai/preview", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      setPreview({ total: res.data.total, duplicates: res.data.duplicates, mapping: res.data.mapping || {} });
+      setPreview({ total: res.data.total, duplicates: res.data.duplicates, mapping: res.data.mapping || {}, column_mapping: res.data.column_mapping || {} });
       setRows(res.data.rows || []);
       const sel = new Set();
       (res.data.rows || []).forEach((r, i) => { if (!r.is_duplicate) sel.add(i); });
@@ -159,6 +159,21 @@ export default function ImportDialog({ open, onOpenChange, onImported }) {
                 </div>
                 <datalist id="imp-lots">{lotNames.map((n) => <option key={n} value={n} />)}</datalist>
                 <datalist id="imp-corrs">{corrNames.map((n) => <option key={n} value={n} />)}</datalist>
+
+                {Object.keys(preview.column_mapping || {}).length > 0 && (
+                  <div data-testid="import-ai-column-mapping" className="rounded-lg border border-border/60 bg-primary/5 p-3 text-xs space-y-1.5">
+                    <div className="font-semibold text-foreground flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-primary" /> Sugestão de mapeamento da IA</div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {Object.entries(preview.column_mapping).map(([col, info]) => (
+                        <span key={col} className="inline-flex items-center gap-1.5">
+                          <span className="font-medium text-muted-foreground truncate max-w-[160px]">{col}</span>
+                          <span className="text-primary">→</span>
+                          <b className="text-foreground">{info.label}</b>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div data-testid="import-mapping-summary" className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs space-y-1.5">
                   <div className="font-semibold text-foreground">Conferência do mapeamento das colunas</div>
