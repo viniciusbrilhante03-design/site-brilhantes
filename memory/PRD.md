@@ -263,6 +263,15 @@ Frontend (SaleFormDialog): campo Valor financiado (sempre visível, obrigatório
 Testado (curl, exemplos oficiais): 200k/150k 5% base venda→10000; base financiado→7500 (VGV=200000 nos dois); descontos 375+5+50→líquida 7070; erros 400 corretos; create+edit recalculam.
 PENDENTE: loteamento com base/% padrão (opcional) ficou p/ junto da Fase 7 (expansão de loteamentos). FASES 3 a 9. REPUBLICAR p/ produção.
 
+### Iteração 24 (2026-06 fork) — FASE 3 backend (Parcelas/Baixas/Cancelamento/Extrato) ✅ [checkpoint]
+Backend:
+- Installment estendida: gross, discount, net, paid, status (pendente/parcial/pago/vencida), payments[] (baixa: amount,date,method,discount,reason,notes,kind recebimento|repasse,receipt,by,at).
+- `_recompute_inst` calcula net/paid/saldo/status. POST `/sales/{id}/installments/{n}/baixa` (parcial/total) + auditoria.
+- PATCH `/sales/{id}/cancel` (gestor): status=cancelled + motivo + auditoria; cancelada EXCLUÍDA de VGV/ranking/metas/stats/listagem (filtros em _company_sales, _scoped_sales, _rank_from_sales, _goal_progress) mantendo histórico.
+- GET `/commissions/extrato` (vendas, VGV, gerada, recebida, a receber, vencida, próximos, próximo recebimento) e GET `/commissions/agenda` (parcelas em aberto por vencimento). `_sale_comm_frac` escala comissão p/ corretor.
+Testado (curl): baixa 700→parcial saldo500, +500→pago; cancel reduz VGV em 100k e some da lista; extrato OK.
+PENDENTE (continuação): FRONTEND da Fase 3 — seção Comissões (ARTE 04 Extrato c/ PDF, 05 Agenda, 06 Lançamento, 07 Dar baixa) + botão Cancelar venda + nomes "Parcelas da venda" vs "Parcelas da comissão". Depois FASES 4 a 9. REPUBLICAR.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

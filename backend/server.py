@@ -112,9 +112,9 @@ async def _scoped_sales(user: dict) -> list:
     """Vendas visíveis ao usuário: casa por owner_id/broker_ids E por nome do corretor (igual ao ranking)."""
     docs = await db.sales.find({}, {"_id": 0}).to_list(5000)
     if user.get("role") == "master":
-        return docs
+        return [s for s in docs if s.get("status") != "cancelled"]
     names = _user_names(user)
-    return [s for s in docs if _sale_belongs(s, user, names)]
+    return [s for s in docs if s.get("status") != "cancelled" and _sale_belongs(s, user, names)]
 
 
 def _set_jwt_cookie(response: Response, token: str):
@@ -157,6 +157,12 @@ class Installment(BaseModel):
     value: float
     received: bool = False
     received_date: Optional[str] = None
+    gross: float = 0.0
+    discount: float = 0.0
+    net: float = 0.0
+    paid: float = 0.0
+    status: str = "pendente"
+    payments: List[dict] = []
 
 
 class Discount(BaseModel):
@@ -545,7 +551,7 @@ def _match_period(d, month, year):
 
 async def _company_sales(month, year):
     docs = await db.sales.find({}, {"_id": 0}).to_list(5000)
-    return [d for d in docs if _match_period(d, month, year)]
+    return [d for d in docs if d.get("status") != "cancelled" and _match_period(d, month, year)]
 
 
 @api_router.get("/sales", response_model=List[Sale])
@@ -840,6 +846,151 @@ async def toggle_installment(sale_id: str, number: int, user: dict = Depends(get
         raise HTTPException(status_code=404, detail="Parcela não encontrada")
     await db.sales.update_one({"id": sale_id}, {"$set": {"installments": installments}})
     return await db.sales.find_one({"id": sale_id}, {"_id": 0})
+
+
+def _inst_net(inst):
+    net = inst.get("net")
+    if net:
+        return net
+    g = inst.get("gross") or inst.get("value") or 0
+    return round(g - (inst.get("discount") or 0), 2)
+
+
+def _recompute_inst(inst):
+    net = _inst_net(inst)
+    paid = round(sum((p.get("amount") or 0) for p in (inst.get("payments") or []) if (p.get("kind") or "repasse") == "repasse"), 2)
+    inst["net"] = net
+    inst["paid"] = paid
+    saldo = round(net - paid, 2)
+    today = (datetime.now(timezone.utc) - timedelta(hours=3)).date().isoformat()
+    if paid <= 0:
+        inst["status"] = "vencida" if (inst.get("due_date") and inst["due_date"] < today) else "pendente"
+    elif saldo > 0.009:
+        inst["status"] = "parcial"
+    else:
+        inst["status"] = "pago"
+    inst["received"] = inst["status"] == "pago"
+    return saldo
+
+
+@api_router.post("/sales/{sale_id}/installments/{number}/baixa")
+async def baixa_installment(sale_id: str, number: int, request: Request, user: dict = Depends(get_current_user)):
+    sale = await db.sales.find_one({"id": sale_id, **_scope_query(user)}, {"_id": 0})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Venda não encontrada")
+    body = await request.json()
+    insts = sale.get("installments", [])
+    target = next((i for i in insts if i["number"] == number), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Parcela não encontrada")
+    now = datetime.now(timezone.utc)
+    today = (now - timedelta(hours=3)).date().isoformat()
+    pay = {
+        "amount": float(body.get("amount") or 0), "date": body.get("date") or today,
+        "method": body.get("method") or "", "discount": float(body.get("discount") or 0),
+        "reason": body.get("reason") or "", "notes": body.get("notes") or "",
+        "kind": body.get("kind") or "repasse", "receipt": body.get("receipt") or "",
+        "by": _display(user), "at": now.isoformat(),
+    }
+    if pay["amount"] <= 0:
+        raise HTTPException(status_code=400, detail="Informe o valor pago.")
+    target.setdefault("payments", []).append(pay)
+    if pay["discount"]:
+        target["discount"] = round((target.get("discount") or 0) + pay["discount"], 2)
+    _recompute_inst(target)
+    await db.sales.update_one({"id": sale_id}, {"$set": {"installments": insts}})
+    await _audit("baixa", sale, user,
+                 detail=f"Parcela {number}: {pay['kind']} R$ {pay['amount']:.2f} ({pay['method'] or 's/ forma'})")
+    return await db.sales.find_one({"id": sale_id}, {"_id": 0})
+
+
+@api_router.patch("/sales/{sale_id}/cancel")
+async def cancel_sale(sale_id: str, request: Request, user: dict = Depends(require_master)):
+    sale = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Venda não encontrada")
+    body = await request.json()
+    reason = (body.get("reason") or "").strip()
+    await db.sales.update_one({"id": sale_id}, {"$set": {
+        "status": "cancelled", "cancelled_at": datetime.now(timezone.utc).isoformat(), "cancel_reason": reason}})
+    await _audit("cancel", sale, user, detail=reason or "Venda cancelada/distrato")
+    return {"ok": True}
+
+
+def _sale_comm_frac(s: dict, user: dict) -> float:
+    """Fração da comissão da venda que pertence ao usuário (corretor) — 1.0 para gestor."""
+    if user.get("role") != "corretor":
+        return 1.0
+    cv = s.get("commission_value") or 0
+    if cv <= 0:
+        return 0.0
+    return min((_broker_pool(s) * _partner_share(s, user)) / cv, 1.0)
+
+
+@api_router.get("/commissions/extrato")
+async def commissions_extrato(month: Optional[int] = None, year: Optional[int] = None,
+                              user: dict = Depends(get_current_user)):
+    sales = await list_sales(month=month, year=year, user=user)
+    today = (datetime.now(timezone.utc) - timedelta(hours=3)).date().isoformat()
+    vgv = gerada = recebida = a_receber = vencida = 0.0
+    proximos, lancamentos = [], []
+    for s in sales:
+        frac = _sale_comm_frac(s, user)
+        vgv += (s.get("sale_value", 0) or 0) * (_partner_share(s, user) if user.get("role") == "corretor" else 1.0)
+        insts = s.get("installments") or []
+        if not insts:
+            cv = (s.get("commission_value", 0) or 0) * frac
+            gerada += cv
+            if s.get("commission_received"):
+                recebida += cv
+            else:
+                a_receber += cv
+            continue
+        for inst in insts:
+            _recompute_inst(inst)
+            net = (inst.get("net") or 0) * frac
+            paid = (inst.get("paid") or 0) * frac
+            saldo = round(net - paid, 2)
+            gerada += net
+            recebida += paid
+            a_receber += saldo
+            if inst.get("status") == "vencida":
+                vencida += saldo
+            if inst.get("status") != "pago":
+                proximos.append({"sale_id": s.get("id"), "property_name": s.get("property_name"),
+                                 "quadra": s.get("quadra"), "lote": s.get("lote"), "client_name": s.get("client_name"),
+                                 "broker_name": s.get("broker_name"), "number": inst.get("number"),
+                                 "due_date": inst.get("due_date"), "net": net, "paid": paid, "saldo": saldo,
+                                 "status": inst.get("status")})
+        lancamentos.append({"sale_id": s.get("id"), "property_name": s.get("property_name"),
+                            "quadra": s.get("quadra"), "lote": s.get("lote"), "broker_name": s.get("broker_name"),
+                            "sale_date": s.get("sale_date"),
+                            "status": "pago" if all(i.get("status") == "pago" for i in insts) else
+                                      ("parcial" if any(i.get("paid") for i in insts) else "pendente")})
+    proximos.sort(key=lambda p: p.get("due_date") or "")
+    return {"vendas": len(sales), "vgv": round(vgv, 2), "comissao_gerada": round(gerada, 2),
+            "comissao_recebida": round(recebida, 2), "comissao_a_receber": round(a_receber, 2),
+            "comissao_vencida": round(vencida, 2), "proximos": proximos[:50], "lancamentos": lancamentos,
+            "proximo_recebimento": proximos[0] if proximos else None}
+
+
+@api_router.get("/commissions/agenda")
+async def commissions_agenda(user: dict = Depends(get_current_user)):
+    sales = await list_sales(user=user)
+    items = []
+    for s in sales:
+        frac = _sale_comm_frac(s, user)
+        for inst in (s.get("installments") or []):
+            _recompute_inst(inst)
+            if inst.get("status") == "pago":
+                continue
+            items.append({"sale_id": s.get("id"), "property_name": s.get("property_name"),
+                          "quadra": s.get("quadra"), "lote": s.get("lote"), "client_name": s.get("client_name"),
+                          "broker_name": s.get("broker_name"), "number": inst.get("number"),
+                          "due_date": inst.get("due_date"), "saldo": round((inst.get("net") or 0) * frac - (inst.get("paid") or 0) * frac, 2),
+                          "status": inst.get("status")})
+    items.sort(key=lambda p: p.get("due_date") or "")
+    return items
 
 
 @api_router.post("/sales/{sale_id}/transfer")
@@ -1180,6 +1331,8 @@ async def _notify(user_id: str, ntype: str, message: str, meta: dict = None):
 def _rank_from_sales(sales):
     vol = {}
     for s in sales:
+        if s.get("status") == "cancelled":
+            continue
         brokers = s.get("brokers") or []
         if brokers:
             total = sum((b.get("split_pct") or 0) for b in brokers) or 100.0
@@ -1615,7 +1768,7 @@ async def cron_installments(background_tasks: BackgroundTasks,
 
 # ---------------- Goals (metas) ----------------
 async def _goal_progress(g: dict, all_sales: list):
-    gsales = [s for s in all_sales if _match_period(s, g.get("month"), g["year"])]
+    gsales = [s for s in all_sales if s.get("status") != "cancelled" and _match_period(s, g.get("month"), g["year"])]
     if g.get("scope") == "company":
         cur = (sum(s.get("sale_value", 0) or 0 for s in gsales)
                if g.get("metric") == "vgv" else len(gsales))
