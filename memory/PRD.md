@@ -386,6 +386,16 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
   27 cards → Gerenciar abre o cadastro completo (Informações/Galeria/IA); ranking alternando p/ Loteamentos (Casa Praia Grande 1º).
 - IMPORTANTE: tudo em PREVIEW. App publicado ainda é a versão antiga → **REPUBLICAR** para refletir no app ao vivo.
 
+### Iteração 35 (2026-06 fork) — Base do Financeiro Avançado documentada + publicação
+- **Base recebida (mockups ARTE 04-07 + Relatório de comissões)**: Comissões já existem (Extrato/Agenda/Baixas/Lançamento/Dar baixa em CommissionsDialog + SaleFormDialog). NOVO a construir = **"Relatório de comissões" consolidado**:
+  tabela única com Data, Loteamento, Qd, Lt, Corretor, Valor do lote, %, Comissão, Desc. NF/boleto, Líquido, Parc. (x/n),
+  Pago, Saldo, Status (Pendente/Parcial/Paga), Obs.; filtros Período/Loteamento/Corretor/Status + Agrupar (Loteamento>Quadra)
+  + seletor de Colunas; export PDF/Excel; **edição inline de % e desconto com histórico de auditoria**; resumo (Vendas,
+  Comissão gerada, Recebida, A receber). [P0 PRÓXIMA RODADA]
+- Pendências do mockup Loteamentos: ARTE 13 (abas Vídeos/Mapa + "Abas visíveis p/ corretores"), ARTE 17 (Config OpenAI:
+  trocar chave/modelo/limite/uso), anexar PDF na Base IA, "Organizar ordem" (drag) na lista. [P1]
+- Ação: publicando o estado atual (tudo das iterações 26-34). Financeiro avançado fica para a próxima rodada.
+
 ### Iteração 34 (2026-06 fork) — Copys por categoria + Base de conhecimento IA + Perguntas sem resposta ✅
 - **Copys por categoria (ARTE 14)**: `copies[]` no doc loteamento. POST/PUT/DELETE `/loteamentos/{id}/copies` + POST
   `/loteamentos/{id}/copies/generate` {category, channel} (IA gera por categoria usando specs+galeria+conhecimento).
