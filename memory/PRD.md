@@ -280,6 +280,29 @@ PENDENTE (continuação): FRONTEND da Fase 3 — seção Comissões (ARTE 04 Ext
 - Frontend compila sem erros; app carrega (login OK). screenshot_tool não conclui login e2e (limitação da automação); backend 100% curl.
 PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenAI — exigirá chave do gestor.) REPUBLICAR p/ produção.
 
+### Iteração 26 (2026-06 fork) — FASE 4 (Comemoração + Stories 9:16) ✅ [checkpoint]
+- **CelebrationDialog** (`components/CelebrationDialog.jsx`): modal disparado 1x ao CRIAR venda (não no editar), com troféu,
+  confete (`lib/celebrate.js`), foto + nome de guerra do corretor automáticos, card Loteamento/Qd·Lt + VGV da venda e
+  frase motivacional aleatória ("PARABÉNS!"). Toggle de som (localStorage) mantido.
+- **Compartilhar Conquista**: gera imagem **9:16 (1080×1920)** via HTML5 Canvas (logo Brilhantes, "VENDA REALIZADA! 🎉",
+  foto+nome do corretor, loteamento+Qd/Lt, VGV, PARABÉNS + frase, rodapé "Brilhante's Imóveis 🦅"). **SEM dados do cliente.**
+  Web Share API (arquivo) quando disponível, senão download PNG. Botão extra de download e de som.
+- Wiring: Dashboard (gestor) usa `photoMap` dos corretores; CorretorDashboard usa `user.picture`. onSuccess de criar/force
+  grava `celebrateSale=res.data`; removidos os antigos `celebrate()`/toast de criação (agora centralizados no modal).
+- Testado (screenshot e2e, corretor Carlão): modal abre com VGV R$ 400k/550k, loteamento "Casa Praia Grande", confete OK,
+  "Compartilhar" gera e baixa a imagem (toast "Imagem baixada"). Build sem erros.
+- PENDENTE (continuação): FASES 5 a 9. REPUBLICAR p/ produção.
+
+### Iteração 27 (2026-06 fork) — FASE 5 (Ranking: participação) ✅ [checkpoint]
+- **Toggle de participação no ranking** (novo): campo `ranking_opt_out` no usuário corretor. PATCH
+  `/corretores/{id}/ranking` {participate} (master). `ranking()` ignora corretores com opt-out (casa por nome
+  war_name/name, minúsculo) — somem do pódio/lista sem perder as vendas/VGV/comissão em stats.
+- TeamDialog (aba Corretores): novo Switch "No ranking" por corretor (`team-ranking-<id>`), além do "Ativo".
+- Itens da Fase 5 já cobertos antes: esconder VGV total p/ corretor (it.17), faixas de meta 10–100% com frases (it.17),
+  filtros por período/custom (ranking it.9, SalesSection it.10).
+- Testado (curl, master): opt-out tira Carlão do ranking (6→5 entradas) e volta ao reativar.
+- PENDENTE: FASES 6 a 9. (Fase 7 = IA OpenAI — exigirá chave do gestor.) REPUBLICAR p/ produção.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

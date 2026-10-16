@@ -21,7 +21,7 @@ import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import BirthdaysDialog from "@/components/BirthdaysDialog";
 import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import NotificationsBell from "@/components/NotificationsBell";
-import { celebrate, randomPhrase } from "@/lib/celebrate";
+import CelebrationDialog from "@/components/CelebrationDialog";
 import { LogOut, Moon, Sun, CalendarDays, KeyRound, TrendingUp, Wallet, Clock, Hash, UserRound, Cake } from "lucide-react";
 
 const ALL = "all";
@@ -43,6 +43,7 @@ export default function CorretorDashboard() {
   const [commOpen, setCommOpen] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
   const [dupPayload, setDupPayload] = useState(null);
+  const [celebrateSale, setCelebrateSale] = useState(null);
 
   const params = useMemo(() => (month === ALL ? { year } : { month, year }), [month, year]);
 
@@ -58,12 +59,12 @@ export default function CorretorDashboard() {
 
   const createMut = useMutation({
     mutationFn: (payload) => (editing?.id ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload)),
-    onSuccess: () => { invalidateAll(); setFormOpen(false); const wasEdit = editing?.id; setEditing(null); if (wasEdit) { toast.success("Venda atualizada!"); } else { celebrate(); toast.success(randomPhrase(), { description: "🎉 Venda cadastrada com sucesso!" }); } },
+    onSuccess: (res) => { invalidateAll(); setFormOpen(false); const wasEdit = editing?.id; setEditing(null); if (wasEdit) { toast.success("Venda atualizada!"); } else { setCelebrateSale(res.data); } },
     onError: (err, variables) => { if (err?.response?.status === 409 && !editing?.id) { setDupPayload(variables); setDupOpen(true); } else { toast.error("Erro ao salvar venda."); } },
   });
   const forceCreateMut = useMutation({
     mutationFn: (payload) => api.post("/sales?force=true", payload),
-    onSuccess: () => { setDupOpen(false); setDupPayload(null); invalidateAll(); setFormOpen(false); setEditing(null); celebrate(); toast.success(randomPhrase(), { description: "🎉 Venda cadastrada com sucesso!" }); },
+    onSuccess: (res) => { setDupOpen(false); setDupPayload(null); invalidateAll(); setFormOpen(false); setEditing(null); setCelebrateSale(res.data); },
     onError: () => toast.error("Erro ao salvar venda."),
   });
   const deleteMut = useMutation({ mutationFn: (id) => api.delete(`/sales/${id}`), onSuccess: () => { invalidateAll(); toast.success("Venda movida para o histórico."); } });
@@ -187,6 +188,11 @@ export default function CorretorDashboard() {
         onOpenChange={(v) => { setDupOpen(v); if (!v) setDupPayload(null); }}
         payload={dupPayload}
         onConfirm={() => dupPayload && forceCreateMut.mutate(dupPayload)}
+      />
+      <CelebrationDialog
+        sale={celebrateSale}
+        photoMap={{ [(display || "").toLowerCase()]: user?.picture }}
+        onOpenChange={(v) => { if (!v) setCelebrateSale(null); }}
       />
     </div>
   );

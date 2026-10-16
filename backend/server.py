@@ -1222,6 +1222,12 @@ async def ranking(month: Optional[int] = None, year: Optional[int] = None,
             name_to_group[(m or "").strip().lower()] = g["id"]
 
     by_broker = {}
+    optout_users = await db.users.find({"ranking_opt_out": True}, {"_id": 0, "war_name": 1, "name": 1}).to_list(1000)
+    optout = set()
+    for ou in optout_users:
+        for k in (ou.get("war_name"), ou.get("name")):
+            if k:
+                optout.add(k.strip().lower())
     for s in sales:
         brokers = s.get("brokers") or [{
             "name": s.get("broker_name", "—") or "—", "split_pct": 100.0,
@@ -1232,6 +1238,8 @@ async def ranking(month: Optional[int] = None, year: Optional[int] = None,
         pool = _broker_pool(s)
         for b in brokers:
             name = (b.get("name") or "—")
+            if name.strip().lower() in optout:
+                continue
             gid = name_to_group.get(name.strip().lower())
             key = f"grp:{gid}" if gid else name
             display = group_label.get(gid) if gid else name
@@ -2627,6 +2635,15 @@ async def toggle_corretor_active(owner_id: str, request: Request, user: dict = D
     body = await request.json()
     await db.users.update_one({"user_id": owner_id, "role": "corretor"},
                               {"$set": {"active": bool(body.get("active", True))}})
+    return {"ok": True}
+
+
+@api_router.patch("/corretores/{owner_id}/ranking")
+async def toggle_corretor_ranking(owner_id: str, request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    opt_out = not bool(body.get("participate", True))
+    await db.users.update_one({"user_id": owner_id, "role": "corretor"},
+                              {"$set": {"ranking_opt_out": opt_out}})
     return {"ok": True}
 
 

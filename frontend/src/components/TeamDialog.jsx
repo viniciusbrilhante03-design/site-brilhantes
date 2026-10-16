@@ -117,6 +117,10 @@ export default function TeamDialog({ open, onOpenChange }) {
     mutationFn: ({ id, active }) => api.patch(`/corretores/${id}/active`, { active }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["corretores"] }); toast.success("Status atualizado."); },
   });
+  const rankingMut = useMutation({
+    mutationFn: ({ id, participate }) => api.patch(`/corretores/${id}/ranking`, { participate }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["corretores"] }); qc.invalidateQueries({ queryKey: ["ranking"] }); toast.success("Participação no ranking atualizada."); },
+  });
   const delMut = useMutation({
     mutationFn: (id) => api.delete(`/corretores/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["corretores"] }); qc.invalidateQueries({ queryKey: ["ranking"] }); toast.success("Corretor removido."); },
@@ -197,6 +201,10 @@ export default function TeamDialog({ open, onOpenChange }) {
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] text-muted-foreground">{c.active !== false ? "Ativo" : "Inativo"}</span>
                           <Switch data-testid={`team-active-${c.user_id}`} checked={c.active !== false} onCheckedChange={(v) => activeMut.mutate({ id: c.user_id, active: v })} />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-muted-foreground">No ranking</span>
+                          <Switch data-testid={`team-ranking-${c.user_id}`} checked={c.ranking_opt_out !== true} onCheckedChange={(v) => rankingMut.mutate({ id: c.user_id, participate: v })} />
                         </div>
                         <div className="flex gap-1">
                           <Button data-testid={`btn-edit-corretor-${c.user_id}`} variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditing(c); setView("form"); }}><Pencil className="h-4 w-4" /></Button>

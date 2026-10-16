@@ -26,7 +26,7 @@ import ImportDialog from "@/components/ImportDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import TeamDialog from "@/components/TeamDialog";
 import NotificationsBell from "@/components/NotificationsBell";
-import { celebrate, randomPhrase } from "@/lib/celebrate";
+import CelebrationDialog from "@/components/CelebrationDialog";
 import ClientsDialog from "@/components/ClientsDialog";
 import BirthdaysDialog from "@/components/BirthdaysDialog";
 import DuplicatesDialog from "@/components/DuplicatesDialog";
@@ -64,6 +64,7 @@ export default function Dashboard() {
   const [transferSale, setTransferSale] = useState(null);
   const [dupOpen, setDupOpen] = useState(false);
   const [dupPayload, setDupPayload] = useState(null);
+  const [celebrateSale, setCelebrateSale] = useState(null);
 
   const params = useMemo(() => {
     const p = { year };
@@ -118,24 +119,26 @@ export default function Dashboard() {
     return Array.from(set);
   }, [corretoresQ.data, salesQ.data]);
 
-  const afterCreate = () => {
-    invalidateAll();
-    setFormOpen(false);
-    setEditing(null);
-    celebrate();
-    toast.success(randomPhrase(), { description: "🎉 Venda cadastrada com sucesso!" });
-  };
+  const photoMap = useMemo(() => {
+    const m = {};
+    (corretoresQ.data || []).forEach((c) => {
+      const n = (c.war_name || c.name || "").trim().toLowerCase();
+      const p = c.photo || c.picture;
+      if (n && p) m[n] = p;
+    });
+    return m;
+  }, [corretoresQ.data]);
 
   const createMut = useMutation({
     mutationFn: (payload) =>
       editing?.id ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload),
-    onSuccess: () => {
+    onSuccess: (res) => {
       invalidateAll();
       setFormOpen(false);
       const wasEdit = editing?.id;
       setEditing(null);
       if (wasEdit) toast.success("Venda atualizada!");
-      else { celebrate(); toast.success(randomPhrase(), { description: "🎉 Venda cadastrada com sucesso!" }); }
+      else setCelebrateSale(res.data);
     },
     onError: (err, variables) => {
       if (err?.response?.status === 409 && !editing?.id) {
@@ -149,7 +152,7 @@ export default function Dashboard() {
 
   const forceCreateMut = useMutation({
     mutationFn: (payload) => api.post("/sales?force=true", payload),
-    onSuccess: () => { setDupOpen(false); setDupPayload(null); afterCreate(); },
+    onSuccess: (res) => { setDupOpen(false); setDupPayload(null); invalidateAll(); setFormOpen(false); setEditing(null); setCelebrateSale(res.data); },
     onError: () => toast.error("Erro ao salvar venda."),
   });
 
@@ -373,6 +376,11 @@ export default function Dashboard() {
         onConfirm={(id, broker_name) => transferMut.mutate({ id, broker_name })}
       />
       <GoalsDialog open={goalsOpen} onOpenChange={setGoalsOpen} />
+      <CelebrationDialog
+        sale={celebrateSale}
+        photoMap={photoMap}
+        onOpenChange={(v) => { if (!v) setCelebrateSale(null); }}
+      />
       <DuplicateWarningDialog
         open={dupOpen}
         onOpenChange={(v) => { setDupOpen(v); if (!v) setDupPayload(null); }}
