@@ -396,6 +396,20 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
   trocar chave/modelo/limite/uso), anexar PDF na Base IA, "Organizar ordem" (drag) na lista. [P1]
 - Ação: publicando o estado atual (tudo das iterações 26-34). Financeiro avançado fica para a próxima rodada.
 
+### Iteração 36 (2026-06 fork) — Relatório de Comissões consolidado + CPF/Nascimento do corretor ✅
+- **Relatório de Comissões (P0)**: nova aba "Relatório" (padrão) no hub Financeiro (CommissionsReport.jsx). Tabela única:
+  Data · Loteamento · Qd · Lt · Corretor · Valor · % · Comissão · Desc. NF/boleto · Líquido · Parcelas (x/n) · Pago · Saldo · Status (Pendente/Parcial/Paga).
+  Resumo no topo (Vendas / Comissão gerada / Recebida / A receber). Filtros Ano/Mês/Loteamento/Corretor/Status.
+  **Agrupar por loteamento** + **seletor de colunas** (popover). Export PDF/Excel (respeita colunas). **Edição inline** de % e
+  Desc. NF/boleto (só master) salvando na própria venda com recálculo (bruta/líquida) e **auditoria** (action `commission_edit`).
+- Backend: GET `/commissions/report` ({rows,summary,can_edit}, escopado por corretor), `/commissions/report/xlsx` e
+  `/commissions/report/pdf` (param `columns`), PATCH `/sales/{id}/commission` (master; grava desconto tipo `nf_boleto`).
+- **CPF + Data de nascimento do corretor**: adicionados ao model CorretorProfile e às rotas POST/PUT `/corretores`; form
+  TeamDialog/CorretorForm (broker-cpf / broker-birthdate) e exibição no card (broker-cpf-<uid> / broker-birthdate-<uid>).
+  (BrokersDialog.jsx removido — era dead code.)
+- **Baixa de parcela**: opção de **anexar comprovante** (InstallmentsDialog → baixa-receipt-btn/-input); persiste em payments[].receipt/receipt_name; badge "Comprovante anexado".
+- Testado: testing_agent — backend 15/15 pytest (report + corretor cpf/birthdate) e frontend 100% (iteration_13/14.json). **REPUBLICAR** p/ produção.
+
 ### Iteração 34 (2026-06 fork) — Copys por categoria + Base de conhecimento IA + Perguntas sem resposta ✅
 - **Copys por categoria (ARTE 14)**: `copies[]` no doc loteamento. POST/PUT/DELETE `/loteamentos/{id}/copies` + POST
   `/loteamentos/{id}/copies/generate` {category, channel} (IA gera por categoria usando specs+galeria+conhecimento).

@@ -1,0 +1,18 @@
+{
+  "summary": "Retestei o fluxo de cadastro de CORRETOR com CPF e Data de Nascimento no local correto (TeamDialog/CorretorForm, endpoint /api/corretores). Backend: POST/PUT/GET /api/corretores persistem e retornam cpf e birthdate (2/2 pytest PASSED). Frontend (master, cookie session_token=qa_session_vinicius_001): Equipe → aba Corretores → Novo corretor exibe os inputs data-testid=broker-cpf e broker-birthdate; após salvar, o card team-card-<uid> exibe broker-cpf-<uid> (111.222.333-44) e broker-birthdate-<uid> (20/07/1992). Edição alterando CPF/nascimento (555.666.777-88 / 10/03/1988) persistiu no card. Corretor de teste foi excluído ao final (card desapareceu). Regressão rápida: Financeiro abre direto na aba Relatório, report-table renderiza sem warnings de 'key' no console. Nenhum erro de key observado nos logs do console (apenas warnings do Recharts por container 0x0 ao fundo).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_corretor_cpf_birthdate.py", "/app/test_reports/pytest/corretor_cpf.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py está >3700 linhas — considerar split em módulos (sales/corretores/loteamentos/auth) para manutenção.",
+    "update_corretor retorna {'ok': True} em vez do documento atualizado; o frontend reinvalida via query, mas devolver o doc atualizado seria mais consistente com create_corretor."
+  ],
+  "updated_files": ["/app/backend/tests/test_corretor_cpf_birthdate.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Master via Bearer/cookie: qa_session_vinicius_001",
+  "seed_data_creation": "Nenhum dado persistido — corretor de teste criado e deletado dentro das fixtures e do fluxo UI.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "CorretorForm agora inclui broker-cpf e broker-birthdate; card exibe broker-cpf-<uid>/broker-birthdate-<uid>. BrokersDialog foi removido. Backend CorretorProfile persiste cpf/birthdate em POST e PUT /api/corretores."
+}
