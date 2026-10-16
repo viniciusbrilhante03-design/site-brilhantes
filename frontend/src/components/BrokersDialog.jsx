@@ -13,10 +13,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { brl } from "@/lib/format";
-import { Plus, Pencil, Trash2, Camera, Users, Phone, Mail, IdCard, ArrowLeft } from "lucide-react";
+import { brl, formatDateBR } from "@/lib/format";
+import { Plus, Pencil, Trash2, Camera, Users, Phone, Mail, IdCard, ArrowLeft, Cake, Fingerprint } from "lucide-react";
 
-const emptyBroker = { war_name: "", full_name: "", phone: "", creci: "", email: "", photo: "", active: true };
+const emptyBroker = { war_name: "", full_name: "", phone: "", creci: "", email: "", cpf: "", birthdate: "", photo: "", active: true };
 
 // resize/compress image to a small square data URL
 function fileToDataURL(file, max = 256) {
@@ -128,6 +128,18 @@ function BrokerForm({ initial, onCancel, onSaved }) {
             onChange={(e) => set("email", e.target.value)} placeholder="email@exemplo.com" />
         </div>
       </div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label>CPF (opcional)</Label>
+          <Input data-testid="broker-cpf" value={form.cpf}
+            onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Data de nascimento (opcional)</Label>
+          <Input data-testid="broker-birthdate" type="date" value={form.birthdate || ""}
+            onChange={(e) => set("birthdate", e.target.value)} />
+        </div>
+      </div>
 
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="outline" onClick={onCancel}>Cancelar</Button>
@@ -219,6 +231,8 @@ export default function BrokersDialog({ open, onOpenChange, ranking }) {
                         ) : null}
                         <div className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
                           {b.creci && <div className="flex items-center gap-1.5"><IdCard className="h-3 w-3" /> {b.creci}</div>}
+                          {b.cpf && <div className="flex items-center gap-1.5" data-testid={`broker-cpf-${b.id}`}><Fingerprint className="h-3 w-3" /> {b.cpf}</div>}
+                          {b.birthdate && <div className="flex items-center gap-1.5" data-testid={`broker-birthdate-${b.id}`}><Cake className="h-3 w-3" /> {formatDateBR(b.birthdate)}</div>}
                           {b.phone && <div className="flex items-center gap-1.5"><Phone className="h-3 w-3" /> {b.phone}</div>}
                           {b.email && <div className="flex items-center gap-1.5 truncate"><Mail className="h-3 w-3" /> {b.email}</div>}
                         </div>

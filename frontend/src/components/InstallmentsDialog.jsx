@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { brl, formatDateBR } from "@/lib/format";
-import { CheckCircle2, Undo2 } from "lucide-react";
+import { CheckCircle2, Undo2, Paperclip, FileCheck2 } from "lucide-react";
 
 const STATUS = {
   pago: { label: "Pago", cls: "bg-[hsl(var(--emerald))] text-white" },
@@ -18,6 +18,9 @@ export default function InstallmentsDialog({ open, onOpenChange, sale, onBaixa, 
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("PIX");
   const [kind, setKind] = useState("repasse");
+  const [receipt, setReceipt] = useState("");
+  const [receiptName, setReceiptName] = useState("");
+  const fileRef = useRef(null);
   if (!sale) return null;
 
   const cv = sale.commission_value || 0;
@@ -28,9 +31,16 @@ export default function InstallmentsDialog({ open, onOpenChange, sale, onBaixa, 
   const pending = Math.max((insts.reduce((s, i) => s + net(i), 0) || cv) - received, 0);
   const overdue = insts.filter((i) => i.status === "vencida").reduce((s, i) => s + (net(i) - paidOf(i)), 0);
 
-  const startBaixa = (i) => { setOpenRow(i.number); setAmount(String(Math.max(net(i) - paidOf(i), 0))); setMethod("PIX"); setKind("repasse"); };
+  const startBaixa = (i) => { setOpenRow(i.number); setAmount(String(Math.max(net(i) - paidOf(i), 0))); setMethod("PIX"); setKind("repasse"); setReceipt(""); setReceiptName(""); };
+  const handleReceipt = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { setReceipt(ev.target.result); setReceiptName(file.name); };
+    reader.readAsDataURL(file);
+  };
   const confirm = (i) => {
-    onBaixa(sale.id, i.number, { amount: parseFloat(amount) || 0, method, kind });
+    onBaixa(sale.id, i.number, { amount: parseFloat(amount) || 0, method, kind, receipt, receipt_name: receiptName });
     setOpenRow(null);
   };
 
@@ -67,6 +77,11 @@ export default function InstallmentsDialog({ open, onOpenChange, sale, onBaixa, 
                       <Badge className={`${st.cls} text-[10px]`} data-testid={`installment-status-${inst.number}`}>{st.label}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">Vence {formatDateBR(inst.due_date)} · Líquido {brl(net(inst))} · Pago {brl(paidOf(inst))} · Saldo {brl(saldo)}</div>
+                    {(inst.payments || []).some((p) => p.receipt) && (
+                      <div className="text-[11px] text-[hsl(var(--emerald))] flex items-center gap-1 mt-0.5" data-testid={`installment-receipt-${inst.number}`}>
+                        <FileCheck2 className="h-3 w-3" /> Comprovante anexado
+                      </div>
+                    )}
                   </div>
                   {inst.status !== "pago" && (
                     <Button size="sm" data-testid={`btn-baixa-${inst.number}`} onClick={() => (openRow === inst.number ? setOpenRow(null) : startBaixa(inst))}>
@@ -88,7 +103,15 @@ export default function InstallmentsDialog({ open, onOpenChange, sale, onBaixa, 
                         <option value="recebimento">Recebimento (da construtora)</option>
                       </select>
                     </div>
-                    <div className="flex items-end"><Button className="w-full" size="sm" onClick={() => confirm(inst)} data-testid={`baixa-confirm-${inst.number}`}>Confirmar baixa</Button></div>
+                    <div className="col-span-2">
+                      <label className="text-xs text-muted-foreground">Comprovante (opcional)</label>
+                      <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleReceipt} data-testid={`baixa-receipt-input-${inst.number}`} />
+                      <Button type="button" variant="outline" size="sm" className="w-full justify-start gap-1.5 h-9" onClick={() => fileRef.current?.click()} data-testid={`baixa-receipt-btn-${inst.number}`}>
+                        {receipt ? <FileCheck2 className="h-4 w-4 text-[hsl(var(--emerald))]" /> : <Paperclip className="h-4 w-4" />}
+                        <span className="truncate">{receiptName || "Anexar comprovante"}</span>
+                      </Button>
+                    </div>
+                    <div className="col-span-2"><Button className="w-full" size="sm" onClick={() => confirm(inst)} data-testid={`baixa-confirm-${inst.number}`}>Confirmar baixa</Button></div>
                   </div>
                 )}
               </div>

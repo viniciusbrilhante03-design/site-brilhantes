@@ -5,7 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { brl, formatDateBR } from "@/lib/format";
-import { Wallet, CalendarClock, Printer } from "lucide-react";
+import { Wallet, CalendarClock, Printer, Table2 } from "lucide-react";
+import CommissionsReport from "@/components/CommissionsReport";
 
 const STCLS = { pago: "bg-[hsl(var(--emerald))] text-white", parcial: "bg-[hsl(var(--amber))] text-white", vencida: "bg-[hsl(var(--rose))] text-white", pendente: "bg-muted text-foreground" };
 
@@ -18,7 +19,7 @@ function Kpi({ label, value, tone }) {
   );
 }
 
-export default function CommissionsDialog({ open, onOpenChange }) {
+export default function CommissionsDialog({ open, onOpenChange, isMaster = false }) {
   const ext = useQuery({ queryKey: ["extrato"], queryFn: async () => (await api.get("/commissions/extrato")).data, enabled: open });
   const ag = useQuery({ queryKey: ["agenda"], queryFn: async () => (await api.get("/commissions/agenda")).data, enabled: open });
   const e = ext.data || {};
@@ -26,17 +27,22 @@ export default function CommissionsDialog({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="commissions-dialog">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto" data-testid="commissions-dialog">
         <DialogHeader>
-          <DialogTitle className="font-heading text-xl flex items-center gap-2"><Wallet className="h-5 w-5" /> Comissões</DialogTitle>
-          <DialogDescription>Extrato e agenda de recebimentos — somente a sua base de vendas.</DialogDescription>
+          <DialogTitle className="font-heading text-xl flex items-center gap-2"><Wallet className="h-5 w-5" /> Financeiro</DialogTitle>
+          <DialogDescription>Extrato, relatório de comissões e agenda de recebimentos — somente a sua base de vendas.</DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="extrato">
+        <Tabs defaultValue="relatorio">
           <TabsList>
+            <TabsTrigger value="relatorio" data-testid="tab-relatorio"><Table2 className="h-4 w-4 mr-1" /> Relatório</TabsTrigger>
             <TabsTrigger value="extrato" data-testid="tab-extrato">Extrato</TabsTrigger>
             <TabsTrigger value="agenda" data-testid="tab-agenda"><CalendarClock className="h-4 w-4 mr-1" /> Agenda</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="relatorio" className="mt-3" data-testid="relatorio-content">
+            <CommissionsReport canEdit={isMaster} />
+          </TabsContent>
 
           <TabsContent value="extrato" className="space-y-3 mt-3" data-testid="extrato-content">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

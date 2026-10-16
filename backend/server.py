@@ -231,6 +231,8 @@ class BrokerBase(BaseModel):
     phone: Optional[str] = ""
     creci: Optional[str] = ""
     email: Optional[str] = ""
+    cpf: Optional[str] = ""
+    birthdate: Optional[str] = ""   # YYYY-MM-DD
     photo: Optional[str] = ""       # data URL (base64) ou URL
     active: bool = True
 
@@ -1539,6 +1541,7 @@ async def baixa_installment(sale_id: str, number: int, request: Request, user: d
         "method": body.get("method") or "", "discount": float(body.get("discount") or 0),
         "reason": body.get("reason") or "", "notes": body.get("notes") or "",
         "kind": body.get("kind") or "repasse", "receipt": body.get("receipt") or "",
+        "receipt_name": body.get("receipt_name") or "",
         "by": _display(user), "at": now.isoformat(),
     }
     if pay["amount"] <= 0:
@@ -1550,6 +1553,41 @@ async def baixa_installment(sale_id: str, number: int, request: Request, user: d
     await db.sales.update_one({"id": sale_id}, {"$set": {"installments": insts}})
     await _audit("baixa", sale, user,
                  detail=f"Parcela {number}: {pay['kind']} R$ {pay['amount']:.2f} ({pay['method'] or 's/ forma'})")
+    return await db.sales.find_one({"id": sale_id}, {"_id": 0})
+
+
+@api_router.patch("/sales/{sale_id}/commission")
+async def edit_commission(sale_id: str, request: Request, user: dict = Depends(require_master)):
+    """Edição inline do % e do desconto NF/boleto no Relatório de Comissões (com auditoria)."""
+    sale = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Venda não encontrada")
+    body = await request.json()
+    old_rate = sale.get("commission_rate") or 0
+    old_disc = sum((d.get("value") or 0) for d in (sale.get("discounts") or [])
+                   if (d.get("type") or "") in ("nf", "boleto", "nf_boleto"))
+    payload = dict(sale)
+    if body.get("commission_rate") is not None:
+        payload["commission_rate"] = float(body.get("commission_rate") or 0)
+    new_disc = old_disc
+    if body.get("discount") is not None:
+        new_disc = float(body.get("discount") or 0)
+        others = [d for d in (sale.get("discounts") or []) if (d.get("type") or "") not in ("nf", "boleto", "nf_boleto")]
+        if new_disc > 0:
+            others.append({"type": "nf_boleto", "value": new_disc,
+                           "reason": "Desc. NF/boleto", "notes": "Editado no relatório"})
+        payload["discounts"] = others
+    _compute_commission(payload)
+    upd = {
+        "commission_rate": payload.get("commission_rate", 0),
+        "discounts": payload.get("discounts", []),
+        "commission_gross": payload.get("commission_gross", 0),
+        "commission_value": payload.get("commission_value", 0),
+        "commission_net": payload.get("commission_net", 0),
+    }
+    await db.sales.update_one({"id": sale_id}, {"$set": upd})
+    await _audit("commission_edit", {**sale, **upd}, user,
+                 detail=f"% {old_rate}→{upd['commission_rate']} · Desc. NF/boleto R$ {old_disc:.2f}→R$ {new_disc:.2f}")
     return await db.sales.find_one({"id": sale_id}, {"_id": 0})
 
 
@@ -3223,6 +3261,224 @@ async def export_pdf(month: Optional[int] = None, year: Optional[int] = None,
     return Response(
         content=buf.getvalue(), media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# ---------------- Relatório de Comissões (consolidado) ----------------
+REPORT_COLUMNS = ["Data", "Loteamento", "Quadra", "Lote", "Corretor", "Valor",
+                  "%", "Comissão", "Desc. NF/boleto", "Líquido", "Parcelas",
+                  "Pago", "Saldo", "Status"]
+REPORT_MONEY_COLS = {"Valor", "Comissão", "Desc. NF/boleto", "Líquido", "Pago", "Saldo"}
+_STATUS_LABEL = {"pendente": "Pendente", "parcial": "Parcial", "pago": "Paga"}
+
+
+def _report_status(insts, received):
+    if insts:
+        if all(i.get("status") == "pago" for i in insts):
+            return "pago"
+        if any((i.get("paid") or 0) > 0 for i in insts):
+            return "parcial"
+        return "pendente"
+    return "pago" if received else "pendente"
+
+
+def _report_row(s: dict, user: dict) -> dict:
+    frac = _sale_comm_frac(s, user)
+    pshare = _partner_share(s, user) if user.get("role") == "corretor" else 1.0
+    gross = round((s.get("commission_value") or 0) * frac, 2)
+    insts = s.get("installments") or []
+    for i in insts:
+        _recompute_inst(i)
+    if insts:
+        net = round(sum((i.get("net") or 0) for i in insts) * frac, 2)
+        paid = round(sum((i.get("paid") or 0) for i in insts) * frac, 2)
+        done = sum(1 for i in insts if i.get("status") == "pago")
+        parc = f"{done}/{len(insts)}"
+    else:
+        full_net = s.get("commission_net")
+        if not full_net:
+            full_net = (s.get("commission_value") or 0) - sum((d.get("value") or 0) for d in (s.get("discounts") or []))
+        net = round(full_net * frac, 2)
+        paid = net if s.get("commission_received") else 0.0
+        parc = "À vista"
+    disc = round(gross - net, 2)
+    saldo = round(net - paid, 2)
+    st = _report_status(insts, s.get("commission_received"))
+    return {
+        "sale_id": s.get("id"),
+        "Data": _fmt_date(s.get("sale_date")),
+        "Loteamento": s.get("property_name", ""),
+        "Quadra": s.get("quadra", ""),
+        "Lote": s.get("lote", ""),
+        "Corretor": s.get("broker_name", ""),
+        "Valor": round((s.get("sale_value") or 0) * pshare, 2),
+        "%": s.get("commission_rate", 0) or 0,
+        "Comissão": gross,
+        "Desc. NF/boleto": disc,
+        "Líquido": net,
+        "Parcelas": parc,
+        "Pago": paid,
+        "Saldo": saldo,
+        "Status": _STATUS_LABEL.get(st, "Pendente"),
+        "status_key": st,
+        "can_edit": user.get("role") != "corretor",
+        "discount_total": round(sum((d.get("value") or 0) for d in (s.get("discounts") or [])), 2),
+    }
+
+
+def _sale_has_corretor(s: dict, name: str) -> bool:
+    nm = (name or "").strip().lower()
+    if not nm:
+        return True
+    if (s.get("broker_name") or "").strip().lower() == nm:
+        return True
+    return any((b.get("name") or "").strip().lower() == nm for b in (s.get("brokers") or []))
+
+
+async def _report_sales(user, month, year, start, end):
+    if start or end:
+        docs = await _scoped_sales(user)
+        sales = [d for d in docs
+                 if (not start or (d.get("sale_date") or "") >= start)
+                 and (not end or (d.get("sale_date") or "") <= end)]
+        sales.sort(key=lambda x: x.get("sale_date", ""), reverse=True)
+        return sales
+    return await list_sales(month=month, year=year, user=user)
+
+
+async def _build_report(user, month, year, start, end, loteamento, corretor, status):
+    sales = await _report_sales(user, month, year, start, end)
+    lot = _norm_name(loteamento) if loteamento else ""
+    rows = []
+    for s in sales:
+        if lot and _norm_name(s.get("property_name")) != lot:
+            continue
+        if corretor and not _sale_has_corretor(s, corretor):
+            continue
+        row = _report_row(s, user)
+        if status and row["status_key"] != status:
+            continue
+        rows.append(row)
+    summary = {
+        "vendas": len(rows),
+        "comissao_gerada": round(sum(r["Comissão"] for r in rows), 2),
+        "recebida": round(sum(r["Pago"] for r in rows), 2),
+        "a_receber": round(sum(r["Saldo"] for r in rows), 2),
+    }
+    return rows, summary
+
+
+@api_router.get("/commissions/report")
+async def commissions_report(month: Optional[int] = None, year: Optional[int] = None,
+                             start: Optional[str] = None, end: Optional[str] = None,
+                             loteamento: Optional[str] = None, corretor: Optional[str] = None,
+                             status: Optional[str] = None, user: dict = Depends(get_current_user)):
+    rows, summary = await _build_report(user, month, year, start, end, loteamento, corretor, status)
+    return {"rows": rows, "summary": summary, "can_edit": user.get("role") != "corretor"}
+
+
+def _report_cols(param):
+    if not param:
+        return list(REPORT_COLUMNS)
+    wanted = [c.strip() for c in param.split("||") if c.strip()]
+    cols = [c for c in REPORT_COLUMNS if c in wanted]
+    return cols or list(REPORT_COLUMNS)
+
+
+@api_router.get("/commissions/report/xlsx")
+async def commissions_report_xlsx(month: Optional[int] = None, year: Optional[int] = None,
+                                  start: Optional[str] = None, end: Optional[str] = None,
+                                  loteamento: Optional[str] = None, corretor: Optional[str] = None,
+                                  status: Optional[str] = None, columns: Optional[str] = None,
+                                  user: dict = Depends(get_current_user)):
+    rows, _ = await _build_report(user, month, year, start, end, loteamento, corretor, status)
+    cols = _report_cols(columns)
+    df = pd.DataFrame(rows, columns=REPORT_COLUMNS)[cols] if rows else pd.DataFrame(columns=cols)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Comissões")
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="relatorio-comissoes-brilhantes.xlsx"'},
+    )
+
+
+@api_router.get("/commissions/report/pdf")
+async def commissions_report_pdf(month: Optional[int] = None, year: Optional[int] = None,
+                                 start: Optional[str] = None, end: Optional[str] = None,
+                                 loteamento: Optional[str] = None, corretor: Optional[str] = None,
+                                 status: Optional[str] = None, columns: Optional[str] = None,
+                                 user: dict = Depends(get_current_user)):
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    rows, summary = await _build_report(user, month, year, start, end, loteamento, corretor, status)
+    cols = _report_cols(columns)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=10 * mm, rightMargin=10 * mm,
+                            topMargin=10 * mm, bottomMargin=10 * mm)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("t", parent=styles["Title"], textColor=colors.HexColor("#0F382C"), fontSize=16)
+    sub_style = ParagraphStyle("s", parent=styles["Normal"], textColor=colors.HexColor("#6b7280"), fontSize=9)
+    cell = ParagraphStyle("c", parent=styles["Normal"], fontSize=6.5, leading=8)
+    head = ParagraphStyle("h", parent=styles["Normal"], fontSize=6.5, leading=8, textColor=colors.white)
+
+    logo_path = ROOT_DIR.parent / "frontend" / "public" / "logo-light.jpg"
+    elements = []
+    if logo_path.exists():
+        elements.append(Image(str(logo_path), width=20 * mm, height=20 * mm))
+        elements.append(Spacer(1, 2 * mm))
+    elements += [
+        Paragraph("Brilhante's Imóveis — Relatório de Comissões", title_style),
+        Paragraph(f"{summary['vendas']} venda(s) &nbsp;·&nbsp; Comissão gerada {_fmt_brl(summary['comissao_gerada'])} "
+                  f"&nbsp;·&nbsp; Recebida {_fmt_brl(summary['recebida'])} "
+                  f"&nbsp;·&nbsp; A receber {_fmt_brl(summary['a_receber'])}", sub_style),
+        Spacer(1, 6 * mm),
+    ]
+    data = [[Paragraph(h, head) for h in cols]]
+    for r in rows:
+        line = []
+        for c in cols:
+            v = r.get(c, "")
+            if c in REPORT_MONEY_COLS:
+                txt = _fmt_brl(v)
+            elif c == "%":
+                txt = f"{v}%" if v else "—"
+            else:
+                txt = str(v) if v not in (None, "") else "—"
+            line.append(Paragraph(txt, cell))
+        data.append(line)
+    totals = []
+    for i, c in enumerate(cols):
+        if c in REPORT_MONEY_COLS:
+            totals.append(Paragraph(f"<b>{_fmt_brl(sum((r.get(c) or 0) for r in rows))}</b>", cell))
+        elif i == 0:
+            totals.append(Paragraph("<b>TOTAIS</b>", cell))
+        else:
+            totals.append("")
+    data.append(totals)
+
+    table = Table(data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F382C")),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d1d5db")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f3f6f5")]),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#efe7d4")),
+    ]))
+    elements.append(table)
+    doc.build(elements)
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(), media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="relatorio-comissoes-brilhantes.pdf"'},
     )
 
 

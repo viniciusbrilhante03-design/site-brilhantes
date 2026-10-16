@@ -364,7 +364,7 @@ export default function Dashboard() {
         onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })}
         onBaixa={(saleId, number, payload) => baixaMut.mutate({ saleId, number, payload })}
       />
-      <CommissionsDialog open={commOpen} onOpenChange={setCommOpen} />
+      <CommissionsDialog open={commOpen} onOpenChange={setCommOpen} isMaster={true} />
       <CancelSaleDialog sale={cancelSale} onOpenChange={(v) => { if (!v) setCancelSale(null); }}
         onConfirm={(id, reason) => cancelMut.mutate({ id, reason })} />
 

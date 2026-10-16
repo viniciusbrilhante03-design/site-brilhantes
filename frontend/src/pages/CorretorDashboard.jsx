@@ -186,7 +186,7 @@ export default function CorretorDashboard() {
       <InstallmentsDialog open={!!instSale} onOpenChange={(v) => { if (!v) setInstSale(null); }} sale={instSale}
         onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })}
         onBaixa={(saleId, number, payload) => baixaMut.mutate({ saleId, number, payload })} />
-      <CommissionsDialog open={commOpen} onOpenChange={setCommOpen} />
+      <CommissionsDialog open={commOpen} onOpenChange={setCommOpen} isMaster={false} />
       <AttachmentsDialog open={!!attachSale} onOpenChange={(v) => { if (!v) setAttachSale(null); }} sale={attachSale} />
       <ChangePasswordDialog open={pwdOpen} onOpenChange={setPwdOpen} />
       <BirthdaysDialog open={birthdaysOpen} onOpenChange={setBirthdaysOpen} />
