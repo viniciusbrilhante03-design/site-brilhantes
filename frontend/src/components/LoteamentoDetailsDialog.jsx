@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Sparkles, Send, Megaphone, GraduationCap, Wand2, Loader2 } from "lucide-react";
 import LoteamentoSpecsForm, { mergeSpecs, EMPTY_SPECS } from "@/components/LoteamentoSpecsForm";
+import LoteamentoGallery from "@/components/LoteamentoGallery";
 
 function fmtUpdated(iso) {
   if (!iso) return null;
@@ -69,11 +70,11 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
     },
   });
 
-  const generateCopy = async () => {
+  const generateCopy = async (channel) => {
     setGenLoading(true);
     try {
       await api.put(`/loteamentos/${lot.id}/details`, { specs, copy, ai_training: training });
-      const res = await api.post(`/loteamentos/${lot.id}/generate-copy`);
+      const res = await api.post(`/loteamentos/${lot.id}/generate-copy`, null, { params: { channel } });
       setCopy(res.data.copy || "");
       toast.success("Copy gerada pela IA! Revise e salve.");
     } catch (e) {
@@ -111,6 +112,7 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
         <Tabs defaultValue="dados">
           <TabsList>
             <TabsTrigger value="dados" data-testid="lot-tab-dados">Informações</TabsTrigger>
+            <TabsTrigger value="galeria" data-testid="lot-tab-galeria">Galeria</TabsTrigger>
             <TabsTrigger value="ia" data-testid="lot-tab-ia"><Sparkles className="h-4 w-4 mr-1" /> IA Especialista</TabsTrigger>
           </TabsList>
 
@@ -118,11 +120,18 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
             <LoteamentoSpecsForm value={specs} onChange={setSpecs} />
 
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <Label className="flex items-center gap-1.5"><Megaphone className="h-4 w-4" /> Copy (texto de divulgação)</Label>
-                <div className="flex gap-1.5">
-                  <Button data-testid="lot-gen-copy" variant="outline" size="sm" className="h-7 text-xs gap-1" disabled={genLoading} onClick={generateCopy}>
-                    {genLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />} Gerar com IA
+                <div className="flex gap-1.5 items-center">
+                  <span className="text-[11px] text-muted-foreground mr-0.5">Gerar p/:</span>
+                  <Button data-testid="lot-gen-stories" variant="outline" size="sm" className="h-7 text-xs gap-1" disabled={genLoading} onClick={() => generateCopy("stories")}>
+                    {genLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />} Stories
+                  </Button>
+                  <Button data-testid="lot-gen-feed" variant="outline" size="sm" className="h-7 text-xs gap-1" disabled={genLoading} onClick={() => generateCopy("feed")}>
+                    <Wand2 className="h-3.5 w-3.5" /> Feed
+                  </Button>
+                  <Button data-testid="lot-gen-whatsapp" variant="outline" size="sm" className="h-7 text-xs gap-1" disabled={genLoading} onClick={() => generateCopy("whatsapp")}>
+                    <Wand2 className="h-3.5 w-3.5" /> WhatsApp
                   </Button>
                   {copy && <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={copyToClipboard}>Copiar</Button>}
                 </div>
@@ -142,6 +151,10 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
                 {saveMut.isPending ? "Salvando..." : "Salvar informações"}
               </Button>
             </div>
+          </TabsContent>
+
+          <TabsContent value="galeria" className="mt-3">
+            <LoteamentoGallery lotId={lot?.id} />
           </TabsContent>
 
           <TabsContent value="ia" className="mt-3">

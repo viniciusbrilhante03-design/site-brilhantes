@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Header, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Form, Header, BackgroundTasks
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -631,6 +631,11 @@ _LOT_STATUS = {"nao_iniciada": "Não iniciada", "em_andamento": "Em andamento",
                "fase_final": "Fase final", "concluida": "Concluída", "entregue": "Entregue"}
 _LOT_TIPO = {"aberto": "Loteamento aberto", "fechado": "Loteamento fechado"}
 _LOT_CORRECAO = {"sem": "Sem correção", "ipca": "IPCA", "igpm": "IGP-M"}
+_COPY_CHANNELS = {
+    "stories": "Formato Instagram Stories: muito curto (até ~45 palavras), impactante, com emojis e uma chamada para ação (ex.: 'chama no direct'). Pode terminar com 2-3 hashtags curtas.",
+    "feed": "Formato legenda de feed do Instagram: texto médio (até ~120 palavras), com storytelling leve, bullets usando ✅ para os diferenciais e 4-6 hashtags no final.",
+    "whatsapp": "Formato mensagem de WhatsApp: tom pessoal e direto (até ~110 palavras), com quebras de linha, emojis moderados.",
+}
 _LOT_PERIOD = {"mensal": "Mensal", "anual": "Anual"}
 
 
@@ -799,7 +804,11 @@ async def ask_loteamento_ai(lot_id: str, data: AiAsk, user: dict = Depends(get_c
     doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Loteamento não encontrado")
-    ctx = _lot_specs_to_text(doc) or "(nenhuma informação cadastrada)"
+    ctx = _lot_specs_to_text(doc)
+    gal = await _lot_gallery_text(lot_id)
+    if gal:
+        ctx = (ctx + "\n\nGALERIA (diferenciais visuais):\n" + gal).strip()
+    ctx = ctx or "(nenhuma informação cadastrada)"
     system = (
         f"Você é um assistente especialista no loteamento '{doc.get('name')}' da Brilhante's Imóveis. "
         "Responda SEMPRE em português, de forma clara e objetiva, para ajudar o corretor a atender o cliente. "
@@ -828,36 +837,125 @@ async def ask_loteamento_ai(lot_id: str, data: AiAsk, user: dict = Depends(get_c
 
 
 @api_router.post("/loteamentos/{lot_id}/generate-copy")
-async def generate_lot_copy(lot_id: str, user: dict = Depends(require_master)):
+async def generate_lot_copy(lot_id: str, channel: str = "whatsapp", user: dict = Depends(require_master)):
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=400, detail="IA não configurada. Peça ao gestor para cadastrar a chave da OpenAI.")
     doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Loteamento não encontrado")
     ctx = _lot_specs_to_text(doc)
+    gal = await _lot_gallery_text(lot_id)
+    if gal:
+        ctx = (ctx + "\n\nGALERIA (diferenciais visuais):\n" + gal).strip()
     training = doc.get("ai_training") or ""
     if not ctx.strip() and not training.strip():
         raise HTTPException(status_code=400, detail="Cadastre as informações do loteamento antes de gerar a copy.")
+    fmt = _COPY_CHANNELS.get(channel, _COPY_CHANNELS["whatsapp"])
     system = (
-        "Você é redator de marketing imobiliário da Brilhante's Imóveis. Gere um texto de divulgação curto, "
-        "atrativo e pronto para postar no WhatsApp/Instagram sobre o loteamento, em português do Brasil. "
-        "Destaque infraestrutura, localização e condições de pagamento. Use emojis com moderação e uma chamada "
-        "para ação no final. Use SOMENTE os dados fornecidos — nunca invente valores, metragens ou condições. "
-        "Máximo de ~120 palavras. Responda apenas com o texto da copy."
+        "Você é redator de marketing imobiliário da Brilhante's Imóveis. Gere um texto de divulgação em português do "
+        f"Brasil sobre o loteamento. {fmt} Destaque infraestrutura, localização, diferenciais visuais e condições de "
+        "pagamento quando existirem. Use SOMENTE os dados fornecidos — nunca invente valores, metragens ou condições. "
+        "Responda apenas com o texto da copy, sem títulos nem aspas."
     )
     user_msg = f"Loteamento: {doc.get('name')}\n\nDADOS:\n{ctx}"
     if training:
         user_msg += f"\n\nINFORMAÇÕES EXTRAS:\n{training}"
+    if channel == "whatsapp":
+        contato = _display(user)
+        if user.get("phone"):
+            contato += f" - {user['phone']}"
+        user_msg += f"\n\nFinalize com o contato do corretor para o cliente chamar: {contato}"
     try:
         comp = await _get_openai().chat.completions.create(
             model=OPENAI_MODEL,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
-            temperature=0.7, max_tokens=500)
+            temperature=0.75, max_tokens=500)
         copy = (comp.choices[0].message.content or "").strip()
     except Exception as e:
         logger.warning(f"openai copy failed: {type(e).__name__}: {str(e)[:150]}")
         raise HTTPException(status_code=502, detail="Serviço de IA indisponível no momento.")
-    return {"copy": copy}
+    return {"copy": copy, "channel": channel}
+
+
+# ---------------- Galeria do loteamento (fotos / plantas) ----------------
+_LOT_IMG_TYPES = {"foto", "planta"}
+
+
+async def _lot_gallery_text(lot_id: str) -> str:
+    imgs = await db.lot_images.find({"lot_id": lot_id}, {"_id": 0, "data": 0}).sort("created_at", 1).to_list(100)
+    parts = []
+    for i in imgs:
+        t = "Planta" if i.get("type") == "planta" else "Foto"
+        cap = (i.get("caption") or "").strip()
+        parts.append(f"- {t}: {cap}" if cap else f"- {t} (sem descrição)")
+    return "\n".join(parts)
+
+
+class LotImageMeta(BaseModel):
+    id: str
+    lot_id: str
+    type: str = "foto"
+    caption: str = ""
+    content_type: str = ""
+    created_at: str = ""
+
+
+@api_router.get("/loteamentos/{lot_id}/images", response_model=List[LotImageMeta])
+async def list_lot_images(lot_id: str, user: dict = Depends(get_current_user)):
+    docs = await db.lot_images.find({"lot_id": lot_id}, {"_id": 0, "data": 0}).sort("created_at", 1).to_list(100)
+    return [LotImageMeta(**{k: d.get(k, "") for k in ("id", "lot_id", "type", "caption", "content_type", "created_at")}) for d in docs]
+
+
+@api_router.post("/loteamentos/{lot_id}/images", response_model=LotImageMeta)
+async def upload_lot_image(lot_id: str, file: UploadFile = File(...), type: str = Form("foto"),
+                           caption: str = Form(""), user: dict = Depends(require_master)):
+    lot = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
+    if not lot:
+        raise HTTPException(status_code=404, detail="Loteamento não encontrado")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Imagem muito grande (máx. 10 MB).")
+    ctype = file.content_type or "image/jpeg"
+    if not ctype.startswith("image/"):
+        raise HTTPException(status_code=422, detail="Envie um arquivo de imagem (foto ou planta).")
+    doc = {
+        "id": f"img_{uuid.uuid4().hex[:12]}", "lot_id": lot_id,
+        "type": type if type in _LOT_IMG_TYPES else "foto", "caption": (caption or "").strip(),
+        "filename": file.filename or "imagem", "content_type": ctype,
+        "data": base64.b64encode(content).decode("ascii"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.lot_images.insert_one(doc)
+    return LotImageMeta(**{k: doc[k] for k in ("id", "lot_id", "type", "caption", "content_type", "created_at")})
+
+
+@api_router.get("/loteamentos/images/{img_id}/raw")
+async def get_lot_image_raw(img_id: str, user: dict = Depends(get_current_user)):
+    img = await db.lot_images.find_one({"id": img_id}, {"_id": 0})
+    if not img:
+        raise HTTPException(status_code=404, detail="Imagem não encontrada")
+    return Response(content=base64.b64decode(img["data"]), media_type=img.get("content_type", "image/jpeg"))
+
+
+@api_router.patch("/loteamentos/images/{img_id}")
+async def update_lot_image(img_id: str, request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    upd = {}
+    if "caption" in body:
+        upd["caption"] = (body.get("caption") or "").strip()
+    if body.get("type") in _LOT_IMG_TYPES:
+        upd["type"] = body["type"]
+    if upd:
+        await db.lot_images.update_one({"id": img_id}, {"$set": upd})
+    return {"ok": True}
+
+
+@api_router.delete("/loteamentos/images/{img_id}")
+async def delete_lot_image(img_id: str, user: dict = Depends(require_master)):
+    res = await db.lot_images.delete_one({"id": img_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Imagem não encontrada")
+    return {"ok": True}
 
 
 async def _process_lot_reminder():
