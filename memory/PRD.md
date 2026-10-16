@@ -372,6 +372,20 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
   de string) não derruba mais `/ai` nem `/generate-copy` (antes 500 → agora 200). Validado por curl.
 - TUDO PRONTO (Fases 1–9). PENDENTE APENAS: **REPUBLICAR** p/ produção (inclui a chave OpenAI no .env de produção).
 
+### Iteração 32 (2026-06 fork) — Área Loteamentos dedicada + Ranking por loteamento ✅
+- **Feedback do usuário**: a gestão de loteamentos estava "escondida" em Equipe › Loteamentos (só nome p/ vendas). Ele pediu
+  uma ABA própria para cadastrar o loteamento COM as informações + IA.
+- **Área Loteamentos dedicada**: novo botão "Loteamentos" (Building2) no header do gestor → `LoteamentosDialog.jsx`:
+  lista todos os loteamentos (busca, adicionar, remover) e botão "Gerenciar" (✨) por loteamento que abre o
+  `LoteamentoDetailsDialog` completo (abas Informações estruturadas + Galeria + IA Especialista + Copy por canal).
+- **Ranking por loteamento**: novo GET `/api/ranking/loteamentos` (agrega vendas por property_name: qtd + VGV, respeita
+  month/year/start/end). `RankingCard` ganhou alternância **Corretores | Loteamentos** (data-testid ranking-scope-brokers/loteamentos).
+- **Header**: botão "Comissões" renomeado para **"Financeiro"** (abre o hub Extrato/Agenda). [Consolidação total de
+  Relatórios/Projeção no hub Financeiro = próximo passo, a confirmar com o usuário.]
+- Validado: backend `/ranking/loteamentos` (14 loteamentos ordenados por VGV); UI (screenshot gestor): botão Loteamentos →
+  27 cards → Gerenciar abre o cadastro completo (Informações/Galeria/IA); ranking alternando p/ Loteamentos (Casa Praia Grande 1º).
+- IMPORTANTE: tudo em PREVIEW. App publicado ainda é a versão antiga → **REPUBLICAR** para refletir no app ao vivo.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

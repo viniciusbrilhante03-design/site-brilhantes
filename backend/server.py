@@ -1774,6 +1774,24 @@ async def ranking(month: Optional[int] = None, year: Optional[int] = None,
     return list(by_broker.values())
 
 
+@api_router.get("/ranking/loteamentos")
+async def ranking_loteamentos(month: Optional[int] = None, year: Optional[int] = None,
+                              start: Optional[str] = None, end: Optional[str] = None,
+                              user: dict = Depends(get_current_user)):
+    if start or end:
+        docs = await db.sales.find({}, {"_id": 0}).to_list(5000)
+        sales = [s for s in docs if _in_range(s, start, end)]
+    else:
+        sales = await _company_sales(month, year)
+    agg = {}
+    for s in sales:
+        name = (s.get("property_name") or "—").strip() or "—"
+        a = agg.setdefault(name, {"loteamento": name, "qtd": 0, "volume": 0.0})
+        a["qtd"] += 1
+        a["volume"] += s.get("sale_value", 0) or 0
+    return sorted(agg.values(), key=lambda x: x["volume"], reverse=True)
+
+
 # ---------------- Broker groups (duplas no ranking) ----------------
 class BrokerGroupCreate(BaseModel):
     name: str

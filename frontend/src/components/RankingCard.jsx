@@ -7,20 +7,20 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { brl } from "@/lib/format";
-import { Trophy, Medal, Award, Users } from "lucide-react";
+import { Trophy, Medal, Award, Users, Building2 } from "lucide-react";
 
 const iso = (d) => d.toISOString().slice(0, 10);
 
 function periodParams(mode, start, end) {
   const now = new Date();
   if (mode === "week") {
-    const day = (now.getDay() + 6) % 7; // 0 = segunda
+    const day = (now.getDay() + 6) % 7;
     const mon = new Date(now); mon.setDate(now.getDate() - day);
     return { start: iso(mon), end: iso(now) };
   }
   if (mode === "year") return { year: now.getFullYear() };
   if (mode === "custom") return start && end ? { start, end } : { year: now.getFullYear() };
-  return { month: now.getMonth() + 1, year: now.getFullYear() }; // month
+  return { month: now.getMonth() + 1, year: now.getFullYear() };
 }
 
 const podium = [
@@ -30,32 +30,46 @@ const podium = [
 ];
 
 export default function RankingCard() {
-  const [mode, setMode] = useState("month");     // week | month | year | custom
-  const [order, setOrder] = useState("count");  // volume | count | commission
+  const [scope, setScope] = useState("brokers"); // brokers | loteamentos
+  const [mode, setMode] = useState("month");
+  const [order, setOrder] = useState("count");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
 
   const params = useMemo(() => periodParams(mode, start, end), [mode, start, end]);
+  const isLot = scope === "loteamentos";
+
   const rankingQ = useQuery({
-    queryKey: ["ranking", params],
-    queryFn: async () => (await api.get("/ranking", { params })).data,
+    queryKey: ["ranking", scope, params],
+    queryFn: async () => (await api.get(isLot ? "/ranking/loteamentos" : "/ranking", { params })).data,
   });
 
   const sorted = useMemo(() => {
     const list = [...(rankingQ.data || [])];
-    const key = order === "volume" ? "volume" : order === "count" ? "qtd" : "comissao_corretor";
+    const key = order === "volume" ? "volume" : order === "count" ? "qtd" : (isLot ? "volume" : "comissao_corretor");
     return list.sort((a, b) => (b[key] || 0) - (a[key] || 0));
-  }, [rankingQ.data, order]);
+  }, [rankingQ.data, order, isLot]);
 
   const fmtQty = (q) => Number(q || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
-  const mainVal = (b) => (order === "count" ? fmtQty(b.qtd) : brl(order === "volume" ? b.volume : b.comissao_corretor));
-  const subVal = (b) => (order === "count" ? brl(b.volume) : `${fmtQty(b.qtd)} lote(s)`);
+  const mainVal = (b) => (order === "count" ? `${fmtQty(b.qtd)} ${isLot ? "venda(s)" : ""}`.trim() : brl(order === "volume" ? b.volume : (isLot ? b.volume : b.comissao_corretor)));
+  const subVal = (b) => (order === "count" ? brl(b.volume) : `${fmtQty(b.qtd)} ${isLot ? "venda(s)" : "lote(s)"}`);
+
+  const orderOptions = isLot ? [["volume", "VGV"], ["count", "Qtd"]] : [["volume", "VGV"], ["count", "Qtd"], ["commission", "Comissão"]];
 
   return (
     <Card className="p-5 rounded-xl border-border/60" data-testid="broker-ranking">
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-3">
         <Trophy className="h-5 w-5 text-[hsl(var(--gold))]" />
-        <h3 className="font-heading font-bold text-lg">Ranking de Corretores</h3>
+        <h3 className="font-heading font-bold text-lg">{isLot ? "Ranking de Loteamentos" : "Ranking de Corretores"}</h3>
+      </div>
+
+      <div className="inline-flex rounded-lg bg-muted p-1 mb-3 w-full">
+        {[["brokers", "Corretores"], ["loteamentos", "Loteamentos"]].map(([v, lbl]) => (
+          <button key={v} data-testid={`ranking-scope-${v}`} onClick={() => { setScope(v); if (v === "loteamentos" && order === "commission") setOrder("volume"); }}
+            className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md transition-all ${scope === v ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`}>
+            {lbl}
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -79,7 +93,7 @@ export default function RankingCard() {
       )}
 
       <div className="inline-flex rounded-lg bg-muted p-1 mb-4 w-full">
-        {[["volume", "VGV"], ["count", "Qtd"], ["commission", "Comissão"]].map(([v, lbl]) => (
+        {orderOptions.map(([v, lbl]) => (
           <button key={v} data-testid={`ranking-order-${v}`} onClick={() => setOrder(v)}
             className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md transition-all ${order === v ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`}>
             {lbl}
@@ -95,23 +109,30 @@ export default function RankingCard() {
         <div className="space-y-2">
           {sorted.map((b, i) => {
             const p = podium[i];
+            const name = isLot ? b.loteamento : b.broker_name;
             return (
-              <div key={b.broker_name + i} data-testid={`ranking-row-${i}`}
+              <div key={name + i} data-testid={`ranking-row-${i}`}
                 className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors ${p ? `${p.bg} border border-border/40` : "hover:bg-muted/60"}`}>
                 <div className="w-7 flex justify-center">
                   {p ? <p.icon className="h-6 w-6" style={{ color: p.color }} strokeWidth={2} />
                     : <span className="text-sm font-semibold text-muted-foreground tabular">{i + 1}</span>}
                 </div>
-                <Avatar className={`h-9 w-9 ${p ? `ring-2 ${p.ring} ring-offset-1 ring-offset-background` : ""}`}>
-                  {b.photo ? <AvatarImage src={b.photo} alt={b.broker_name} /> : null}
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                    {b.broker_name.slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                {isLot ? (
+                  <div className={`h-9 w-9 rounded-full flex items-center justify-center bg-primary/10 text-primary ${p ? `ring-2 ${p.ring} ring-offset-1 ring-offset-background` : ""}`}>
+                    <Building2 className="h-4 w-4" />
+                  </div>
+                ) : (
+                  <Avatar className={`h-9 w-9 ${p ? `ring-2 ${p.ring} ring-offset-1 ring-offset-background` : ""}`}>
+                    {b.photo ? <AvatarImage src={b.photo} alt={b.broker_name} /> : null}
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                      {b.broker_name.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate flex items-center gap-1.5">
-                    {b.broker_name}
-                    {b.is_group && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><Users className="h-2.5 w-2.5" />Dupla</Badge>}
+                    {name}
+                    {!isLot && b.is_group && <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5"><Users className="h-2.5 w-2.5" />Dupla</Badge>}
                     {p && <span className="text-[10px] font-bold" style={{ color: p.color }}>{p.label}</span>}
                   </div>
                   <div className="text-xs text-muted-foreground tabular">{subVal(b)}</div>
