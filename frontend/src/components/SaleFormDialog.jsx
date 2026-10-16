@@ -22,6 +22,9 @@ const empty = {
   client_email: "",
   client_cpf: "",
   client_birthdate: "",
+  client_has_spouse: false,
+  spouse_name: "", spouse_phone: "", spouse_email: "", spouse_cpf: "", spouse_birthdate: "",
+  client_origin: "", client_origin_other: "", client_notes: "",
   brokers: [{ name: "", split_pct: 100 }],
   sale_date: new Date().toISOString().slice(0, 10),
   sale_value: "",
@@ -34,6 +37,12 @@ const empty = {
   installments: [],
   notes: "",
 };
+
+const ORIGINS = [
+  { v: "acao", label: "🎯 Ação" }, { v: "lead", label: "📲 Lead anúncio" },
+  { v: "carteira", label: "📋 Carteira" }, { v: "stand", label: "🏢 Stand" },
+  { v: "indicacao", label: "🤝 Indicação" }, { v: "outro", label: "✏️ Outro" },
+];
 
 function addMonths(isoDate, n) {
   const d = new Date(isoDate + "T00:00:00");
@@ -208,6 +217,17 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
       client_name: (form.client_name || "").trim(),
       client_phone: (form.client_phone || "").trim(),
       client_email: (form.client_email || "").trim(),
+      client_cpf: (form.client_cpf || "").trim(),
+      client_birthdate: form.client_birthdate || "",
+      client_has_spouse: !!form.client_has_spouse,
+      client_spouse: form.client_has_spouse ? {
+        name: (form.spouse_name || "").trim(), phone: (form.spouse_phone || "").trim(),
+        email: (form.spouse_email || "").trim(), cpf: (form.spouse_cpf || "").trim(),
+        birthdate: form.spouse_birthdate || "",
+      } : null,
+      client_origin: form.client_origin || "",
+      client_origin_other: form.client_origin === "outro" ? (form.client_origin_other || "").trim() : "",
+      client_notes: (form.client_notes || "").trim(),
       broker_name: cleanBrokers.map((b) => b.name).join(" + "),
       brokers: cleanBrokers,
       sale_date: form.sale_date,
@@ -386,6 +406,44 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
                 <Input data-testid="sale-form-client-birthdate-input" type="date" value={form.client_birthdate}
                   onChange={(e) => set("client_birthdate", e.target.value)} />
               </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Label className="text-sm">💍 Possui cônjuge/companheiro?</Label>
+              <div className="flex gap-1">
+                <Button type="button" size="sm" variant={!form.client_has_spouse ? "default" : "outline"} className="h-7"
+                  data-testid="spouse-no" onClick={() => set("client_has_spouse", false)}>Não</Button>
+                <Button type="button" size="sm" variant={form.client_has_spouse ? "default" : "outline"} className="h-7"
+                  data-testid="spouse-yes" onClick={() => set("client_has_spouse", true)}>Sim</Button>
+              </div>
+            </div>
+            {form.client_has_spouse && (
+              <div className="grid sm:grid-cols-3 gap-4" data-testid="spouse-fields">
+                <Input placeholder="Nome do cônjuge" value={form.spouse_name} onChange={(e) => set("spouse_name", e.target.value)} data-testid="spouse-name" />
+                <Input placeholder="Telefone" value={form.spouse_phone} onChange={(e) => set("spouse_phone", e.target.value)} />
+                <Input placeholder="E-mail" value={form.spouse_email} onChange={(e) => set("spouse_email", e.target.value)} />
+                <Input placeholder="CPF" value={form.spouse_cpf} onChange={(e) => set("spouse_cpf", e.target.value)} />
+                <Input type="date" value={form.spouse_birthdate} onChange={(e) => set("spouse_birthdate", e.target.value)} />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label className="text-sm">📣 Origem (OPCIONAL)</Label>
+              <div className="flex flex-wrap gap-1.5" data-testid="origin-chips">
+                {ORIGINS.map((o) => (
+                  <Button key={o.v} type="button" size="sm" className="h-7 text-xs"
+                    variant={form.client_origin === o.v ? "default" : "outline"}
+                    onClick={() => set("client_origin", form.client_origin === o.v ? "" : o.v)}>{o.label}</Button>
+                ))}
+              </div>
+              {form.client_origin === "outro" && (
+                <Input className="mt-1.5" placeholder="Qual?" value={form.client_origin_other}
+                  onChange={(e) => set("client_origin_other", e.target.value)} data-testid="origin-other" />
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">📝 Observação do cliente (OPCIONAL)</Label>
+              <Input value={form.client_notes} onChange={(e) => set("client_notes", e.target.value)}
+                placeholder="Fica no cadastro do cliente" data-testid="client-notes" />
             </div>
           </div>
 

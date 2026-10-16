@@ -22,6 +22,7 @@ import httpx
 import secrets
 import hashlib
 import hmac
+import unicodedata
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -68,6 +69,13 @@ def create_access_token(user_id: str, ver: int = 0) -> str:
 
 def _only_digits(s: str) -> str:
     return re.sub(r"\D", "", s or "")
+
+
+def _norm_name(s: str) -> str:
+    """Normaliza nome para comparação: sem acento, minúsculo, espaços colapsados."""
+    s = (s or "").strip().lower()
+    s = "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", s).strip()
 
 
 def _display(user: dict) -> str:
@@ -180,6 +188,12 @@ class SaleCreate(BaseModel):
     parcelado: bool = False
     installments: List[Installment] = []
     notes: Optional[str] = ""
+    client_id: Optional[str] = ""
+    client_has_spouse: bool = False
+    client_spouse: Optional[dict] = None
+    client_origin: Optional[str] = ""
+    client_origin_other: Optional[str] = ""
+    client_notes: Optional[str] = ""
 
 
 class Sale(SaleCreate):
@@ -229,6 +243,35 @@ class GoalCreate(BaseModel):
 class Goal(GoalCreate):
     id: str = Field(default_factory=lambda: f"goal_{uuid.uuid4().hex[:12]}")
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class ClientSpouse(BaseModel):
+    name: Optional[str] = ""
+    phone: Optional[str] = ""
+    email: Optional[str] = ""
+    cpf: Optional[str] = ""
+    birthdate: Optional[str] = ""
+
+
+class ClientCreate(BaseModel):
+    name: str
+    phone: Optional[str] = ""
+    email: Optional[str] = ""
+    cpf: Optional[str] = ""
+    birthdate: Optional[str] = ""
+    has_spouse: bool = False
+    spouse: Optional[ClientSpouse] = None
+    origin: Optional[str] = ""          # acao|lead|carteira|stand|indicacao|outro
+    origin_other: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
+class Client(ClientCreate):
+    id: str = Field(default_factory=lambda: f"client_{uuid.uuid4().hex[:12]}")
+    name_key: str = ""
+    cpf_key: str = ""
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 # ---------------- Auth ----------------
@@ -605,8 +648,68 @@ async def _find_duplicate(payload: dict):
     return None
 
 
+async def _lot_already_sold(prop, quadra, lote):
+    if not (prop and (quadra or "").strip() and (lote or "").strip()):
+        return None
+    pn = _norm_name(prop)
+    q = (quadra or "").strip().lower()
+    l = (lote or "").strip().lower()
+    docs = await db.sales.find({}, {"_id": 0}).to_list(5000)
+    for s in docs:
+        if s.get("status") == "cancelled":
+            continue
+        if (_norm_name(s.get("property_name")) == pn
+                and (s.get("quadra") or "").strip().lower() == q
+                and (s.get("lote") or "").strip().lower() == l):
+            return s
+    return None
+
+
+async def _resolve_or_create_client(payload: dict) -> str:
+    name = (payload.get("client_name") or "").strip()
+    if not name:
+        return payload.get("client_id") or ""
+    cid = payload.get("client_id")
+    if cid and await db.clients.find_one({"id": cid}, {"_id": 0}):
+        return cid
+    cpf = _only_digits(payload.get("client_cpf"))
+    nk = _norm_name(name)
+    found = None
+    if cpf:
+        found = await db.clients.find_one({"cpf_key": cpf}, {"_id": 0})
+    if not found:
+        found = await db.clients.find_one({"name_key": nk}, {"_id": 0})
+    if found:
+        upd = {}
+        for fs, fc in [("client_phone", "phone"), ("client_email", "email"), ("client_birthdate", "birthdate")]:
+            if payload.get(fs) and not found.get(fc):
+                upd[fc] = payload[fs]
+        if cpf and not found.get("cpf"):
+            upd["cpf"] = payload.get("client_cpf")
+            upd["cpf_key"] = cpf
+        if payload.get("client_notes") and not found.get("notes"):
+            upd["notes"] = payload["client_notes"]
+        if payload.get("client_origin") and not found.get("origin"):
+            upd["origin"] = payload["client_origin"]
+            upd["origin_other"] = payload.get("client_origin_other") or ""
+        if payload.get("client_has_spouse") and not found.get("has_spouse"):
+            upd["has_spouse"] = True
+            upd["spouse"] = payload.get("client_spouse") or {}
+        if upd:
+            await db.clients.update_one({"id": found["id"]}, {"$set": upd})
+        return found["id"]
+    c = Client(name=name, phone=payload.get("client_phone") or "", email=payload.get("client_email") or "",
+               cpf=payload.get("client_cpf") or "", birthdate=payload.get("client_birthdate") or "",
+               has_spouse=bool(payload.get("client_has_spouse")), spouse=payload.get("client_spouse"),
+               origin=payload.get("client_origin") or "", origin_other=payload.get("client_origin_other") or "",
+               notes=payload.get("client_notes") or "", name_key=nk, cpf_key=cpf)
+    await db.clients.insert_one(c.model_dump())
+    return c.id
+
+
 @api_router.post("/sales", response_model=Sale)
-async def create_sale(data: SaleCreate, force: bool = False, user: dict = Depends(get_current_user)):
+async def create_sale(data: SaleCreate, force: bool = False, force_lot: bool = False,
+                      lot_reason: str = "", user: dict = Depends(get_current_user)):
     payload = data.model_dump()
     if user.get("role") == "corretor":
         if not await _loteamento_exists(payload["property_name"]):
@@ -628,10 +731,20 @@ async def create_sale(data: SaleCreate, force: bool = False, user: dict = Depend
         dup = await _find_duplicate(payload)
         if dup:
             raise HTTPException(status_code=409, detail="Já existe uma venda igual (mesmo cliente, loteamento, quadra, lote, data e corretor). Deseja salvar mesmo assim?")
+    if not force_lot:
+        sold = await _lot_already_sold(payload["property_name"], payload.get("quadra"), payload.get("lote"))
+        if sold:
+            if user.get("role") == "corretor":
+                raise HTTPException(status_code=409, detail={"code": "lot_sold", "message": "Este lote já consta como vendido. Fale com o gestor."})
+            raise HTTPException(status_code=409, detail={"code": "lot_sold_master", "message": "Este lote já consta como vendido. Deseja registrar mesmo assim?"})
+    payload["client_id"] = await _resolve_or_create_client(payload)
     sale = Sale(**payload, user_id=user["user_id"], owner_id=owner_id,
                 owner_name=owner_name, broker_ids=broker_ids)
     await db.sales.insert_one(sale.model_dump())
     await _audit("create", sale.model_dump(), user)
+    if force_lot and user.get("role") == "master":
+        await _audit("lot_override", sale.model_dump(), user,
+                     detail=lot_reason or "Registro de lote já vendido autorizado pelo gestor")
     await _post_sale_notifications(sale.model_dump())
     return sale
 
@@ -1192,7 +1305,133 @@ async def list_clients(user: dict = Depends(get_current_user)):
         c["purchases"].sort(key=lambda p: p.get("sale_date", ""), reverse=True)
         c["broker"] = c["purchases"][0]["broker_name"] if c["purchases"] else ""
     out.sort(key=lambda c: c["name"].lower())
+    if user.get("role") == "master":
+        seen = {_norm_name(c["name"]) for c in out}
+        for rc in await db.clients.find({}, {"_id": 0}).to_list(5000):
+            if _norm_name(rc.get("name")) not in seen:
+                out.append({"name": rc.get("name"), "phone": rc.get("phone", ""), "email": rc.get("email", ""),
+                            "birthdate": rc.get("birthdate", ""), "broker": "", "qtd": 0, "volume": 0.0,
+                            "last_date": "", "purchases": [], "client_id": rc.get("id")})
     return out
+
+
+@api_router.post("/clients")
+async def create_client(data: ClientCreate, force: bool = False, user: dict = Depends(get_current_user)):
+    name = (data.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Informe o nome do cliente")
+    cpf = _only_digits(data.cpf)
+    nk = _norm_name(name)
+    if not force:
+        dup = None
+        if cpf:
+            dup = await db.clients.find_one({"cpf_key": cpf}, {"_id": 0})
+        if not dup:
+            dup = await db.clients.find_one({"name_key": nk}, {"_id": 0})
+        if not dup and (data.phone or "").strip():
+            dup = await db.clients.find_one({"phone": data.phone.strip()}, {"_id": 0})
+        if dup:
+            raise HTTPException(status_code=409, detail={"code": "client_dup",
+                                "message": f"Cliente parecido já existe: {dup['name']}.", "client": dup})
+    c = Client(**data.model_dump(), name_key=nk, cpf_key=cpf)
+    await db.clients.insert_one(c.model_dump())
+    return c
+
+
+@api_router.put("/clients/{client_id}")
+async def update_client(client_id: str, data: ClientCreate, user: dict = Depends(get_current_user)):
+    existing = await db.clients.find_one({"id": client_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+    upd = data.model_dump()
+    upd["name_key"] = _norm_name(data.name)
+    upd["cpf_key"] = _only_digits(data.cpf)
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.clients.update_one({"id": client_id}, {"$set": upd})
+    return {**existing, **upd}
+
+
+@api_router.get("/clients/search")
+async def search_clients(q: str = "", user: dict = Depends(get_current_user)):
+    qq = _norm_name(q)
+    digits = _only_digits(q)
+    docs = await db.clients.find({}, {"_id": 0}).to_list(5000)
+    out = []
+    for c in docs:
+        if ((qq and qq in (c.get("name_key") or ""))
+                or (digits and digits in (c.get("cpf_key") or ""))
+                or (digits and digits in _only_digits(c.get("phone")))):
+            out.append(c)
+    return out[:20]
+
+
+@api_router.get("/clients/duplicates")
+async def client_duplicates(user: dict = Depends(require_master)):
+    docs = await db.clients.find({}, {"_id": 0}).to_list(5000)
+    groups = {}
+    for c in docs:
+        groups.setdefault(c.get("cpf_key") or c.get("name_key"), []).append(c)
+    return [{"key": k, "clients": v} for k, v in groups.items() if k and len(v) > 1]
+
+
+@api_router.post("/clients/merge")
+async def merge_clients(request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    keep = body.get("keep_id")
+    drops = body.get("merge_ids") or []
+    kc = await db.clients.find_one({"id": keep}, {"_id": 0})
+    if not kc:
+        raise HTTPException(status_code=404, detail="Cliente principal não encontrado")
+    for did in drops:
+        if did == keep:
+            continue
+        dc = await db.clients.find_one({"id": did}, {"_id": 0})
+        if not dc:
+            continue
+        upd = {}
+        for f in ["phone", "email", "cpf", "birthdate", "notes", "origin", "origin_other"]:
+            if dc.get(f) and not kc.get(f):
+                upd[f] = dc[f]
+                kc[f] = dc[f]
+        if upd.get("cpf"):
+            upd["cpf_key"] = _only_digits(upd["cpf"])
+        if upd:
+            await db.clients.update_one({"id": keep}, {"$set": upd})
+        await db.sales.update_many({"client_id": did}, {"$set": {"client_id": keep}})
+        await db.clients.delete_one({"id": did})
+        await _audit("client_merge", {"id": keep, "client_name": kc.get("name")}, user,
+                     detail=f"Mesclou '{dc.get('name')}' em '{kc.get('name')}'")
+    return {"ok": True}
+
+
+@api_router.get("/loteamentos/duplicates")
+async def lot_duplicates(user: dict = Depends(require_master)):
+    lots = await db.loteamentos.find({}, {"_id": 0}).to_list(3000)
+    sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
+    names = {l.get("name") for l in lots if l.get("name")}
+    names |= {s.get("property_name") for s in sales if s.get("property_name")}
+    groups = {}
+    for n in names:
+        groups.setdefault(_norm_name(n), set()).add(n)
+    return [{"key": k, "names": sorted(v)} for k, v in groups.items() if len(v) > 1]
+
+
+@api_router.post("/loteamentos/merge")
+async def merge_loteamentos(request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    keep = (body.get("keep") or "").strip()
+    drops = body.get("drop") or []
+    if not keep:
+        raise HTTPException(status_code=400, detail="Informe o nome oficial do loteamento")
+    await _ensure_loteamento(keep)
+    for name in drops:
+        if (name or "").strip() == keep:
+            continue
+        r = await db.sales.update_many({"property_name": name}, {"$set": {"property_name": keep}})
+        await db.loteamentos.delete_many({"name": name})
+        await _audit("loteamento_merge", {"property_name": keep}, user,
+                     detail=f"Mesclou '{name}' em '{keep}' ({r.modified_count} venda(s))")
+    return {"ok": True}
 
 
 def _parse_mmdd(bd):

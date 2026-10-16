@@ -241,6 +241,20 @@ entrou e o que falta entrar. Controle datado.
   `list_goals` p/ corretor agora mostra TODAS as coletivas + individuais que batem por user_id OU nome/e-mail.
 - Validado via API: corretor Carlão vê a meta coletiva (Imobiliária) e a individual (70,4% sobre VGV dele). Requer REPUBLICAR.
 
+### Iteração 22 (2026-06 fork) — FASE 1 (Cliente e Venda) ✅ [checkpoint]
+Backend (aditivo, dados preservados):
+- Modelos `Client`/`ClientCreate`/`ClientSpouse`; coleção `clients` (name_key/cpf_key normalizados, cônjuge, origem, observação).
+- `_norm_name` (sem acento/caixa/espaço). `_resolve_or_create_client` liga/cria cliente na venda (sale.client_id) e enriquece campos.
+- Rotas novas: POST/PUT `/clients`, GET `/clients/search`, GET `/clients/duplicates`, POST `/clients/merge`, GET `/loteamentos/duplicates`, POST `/loteamentos/merge`. Merge reatribui vendas (não apaga histórico) + auditoria.
+- Bloqueio de lote vendido no create_sale (corretor 409 `lot_sold`; gestor pode `force_lot` + `lot_reason` → auditoria `lot_override`).
+- SaleCreate ganhou client_cpf/birthdate (antes não eram enviados) + client_has_spouse/spouse/origin/origin_other/notes.
+Frontend:
+- SaleFormDialog: cônjuge (toggle+campos), Origem (chips + "Qual?"), Observação do cliente; CPF/Nascimento agora enviados.
+- DuplicatesDialog (gestor): tela de revisão para mesclar loteamentos e clientes. Botão "Duplicados" no header do gestor.
+Decisões: quadra/lote seguem texto livre com bloqueio de lote já vendido (seleção por catálogo de lotes fica p/ Fase 7, que expande loteamentos — preserva comportamento atual). "Cliente sem venda" aparece na lista do gestor.
+Testado (curl): dedup cliente por acento/caixa (409); venda cria cliente c/ cônjuge/origem/obs/CPF; bloqueio lote vendido; merge loteamento (GUAIÚBA→GUAIUBA) reatribuiu venda sem perda.
+PENDENTE (continuação): FASES 2 a 9. Requer REPUBLICAR p/ produção.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

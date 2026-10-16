@@ -27,12 +27,13 @@ import NotificationsBell from "@/components/NotificationsBell";
 import { celebrate, randomPhrase } from "@/lib/celebrate";
 import ClientsDialog from "@/components/ClientsDialog";
 import BirthdaysDialog from "@/components/BirthdaysDialog";
+import DuplicatesDialog from "@/components/DuplicatesDialog";
 import TransferSaleDialog from "@/components/TransferSaleDialog";
 import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import GoalsCard from "@/components/GoalsCard";
 import GoalsDialog from "@/components/GoalsDialog";
 
-import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake } from "lucide-react";
+import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake, Merge } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -55,6 +56,7 @@ export default function Dashboard() {
   const [clientsOpen, setClientsOpen] = useState(false);
   const [goalsOpen, setGoalsOpen] = useState(false);
   const [birthdaysOpen, setBirthdaysOpen] = useState(false);
+  const [dupsOpen, setDupsOpen] = useState(false);
   const [transferSale, setTransferSale] = useState(null);
   const [dupOpen, setDupOpen] = useState(false);
   const [dupPayload, setDupPayload] = useState(null);
@@ -234,6 +236,11 @@ export default function Dashboard() {
               <Cake className="h-4 w-4" /><span className="hidden md:inline">Aniversariantes</span>
             </Button>
 
+            <Button data-testid="btn-open-duplicates" variant="outline" className="h-9 gap-1.5"
+              onClick={() => setDupsOpen(true)}>
+              <Merge className="h-4 w-4" /><span className="hidden md:inline">Duplicados</span>
+            </Button>
+
             <Button data-testid="btn-open-team" variant="outline" className="h-9 gap-1.5"
               onClick={() => setTeamOpen(true)}>
               <UsersRound className="h-4 w-4" /><span className="hidden md:inline">Equipe</span>
@@ -332,6 +339,7 @@ export default function Dashboard() {
       <TeamDialog open={teamOpen} onOpenChange={setTeamOpen} />
       <ClientsDialog open={clientsOpen} onOpenChange={setClientsOpen} />
       <BirthdaysDialog open={birthdaysOpen} onOpenChange={setBirthdaysOpen} />
+      <DuplicatesDialog open={dupsOpen} onOpenChange={setDupsOpen} />
       <TransferSaleDialog
         open={!!transferSale}
         onOpenChange={(v) => { if (!v) setTransferSale(null); }}
