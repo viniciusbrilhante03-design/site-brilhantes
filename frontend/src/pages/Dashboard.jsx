@@ -30,6 +30,7 @@ import CelebrationDialog from "@/components/CelebrationDialog";
 import AgendaDialog from "@/components/AgendaDialog";
 import ExportDialog from "@/components/ExportDialog";
 import LoteamentosDialog from "@/components/LoteamentosDialog";
+import AiSettingsDialog from "@/components/AiSettingsDialog";
 import ClientsDialog from "@/components/ClientsDialog";
 import BirthdaysDialog from "@/components/BirthdaysDialog";
 import DuplicatesDialog from "@/components/DuplicatesDialog";
@@ -38,7 +39,7 @@ import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import GoalsCard from "@/components/GoalsCard";
 import GoalsDialog from "@/components/GoalsDialog";
 
-import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake, Merge, Wallet, CalendarClock, Building2 } from "lucide-react";
+import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake, Merge, Wallet, CalendarClock, Building2, Sparkles } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -71,6 +72,7 @@ export default function Dashboard() {
   const [agendaOpen, setAgendaOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [lotsOpen, setLotsOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const params = useMemo(() => {
     const p = { year };
@@ -286,6 +288,11 @@ export default function Dashboard() {
               <Building2 className="h-4 w-4" /><span className="hidden md:inline">Loteamentos</span>
             </Button>
 
+            <Button data-testid="btn-open-ai-settings" variant="outline" className="h-9 gap-1.5"
+              onClick={() => setAiOpen(true)}>
+              <Sparkles className="h-4 w-4" /><span className="hidden md:inline">IA</span>
+            </Button>
+
             <Button data-testid="btn-open-commissions" variant="outline" className="h-9 gap-1.5"
               onClick={() => setCommOpen(true)}>
               <Wallet className="h-4 w-4" /><span className="hidden md:inline">Financeiro</span>
@@ -415,6 +422,7 @@ export default function Dashboard() {
       <AgendaDialog open={agendaOpen} onOpenChange={setAgendaOpen} clients={clientsQ.data || []} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />
       <LoteamentosDialog open={lotsOpen} onOpenChange={setLotsOpen} />
+      <AiSettingsDialog open={aiOpen} onOpenChange={setAiOpen} />
       <DuplicateWarningDialog
         open={dupOpen}
         onOpenChange={(v) => { setDupOpen(v); if (!v) setDupPayload(null); }}

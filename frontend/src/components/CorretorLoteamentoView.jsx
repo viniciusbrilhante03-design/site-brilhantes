@@ -105,6 +105,8 @@ export default function CorretorLoteamentoView({ lot, onOpenChange }) {
     askMut.mutate(msg);
   };
 
+  const vis = detailQ.data?.visible_tabs || lot?.visible_tabs || ["galeria", "videos", "mapa", "docs", "copys", "ia"];
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onOpenChange(false); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="corretor-lot-view">
@@ -116,21 +118,22 @@ export default function CorretorLoteamentoView({ lot, onOpenChange }) {
         <Tabs defaultValue="resumo">
           <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="resumo" data-testid="clot-tab-resumo">Resumo</TabsTrigger>
-            <TabsTrigger value="galeria" data-testid="clot-tab-galeria">Galeria</TabsTrigger>
-            <TabsTrigger value="videos" data-testid="clot-tab-videos">Vídeos</TabsTrigger>
-            <TabsTrigger value="mapa" data-testid="clot-tab-mapa">Mapa</TabsTrigger>
-            <TabsTrigger value="docs" data-testid="clot-tab-docs">Documentos</TabsTrigger>
-            <TabsTrigger value="copys" data-testid="clot-tab-copys">Copys</TabsTrigger>
-            <TabsTrigger value="ia" data-testid="clot-tab-ia"><Sparkles className="h-4 w-4 mr-1" /> IA</TabsTrigger>
+            {vis.includes("galeria") && <TabsTrigger value="galeria" data-testid="clot-tab-galeria">Galeria</TabsTrigger>}
+            {vis.includes("videos") && <TabsTrigger value="videos" data-testid="clot-tab-videos">Vídeos</TabsTrigger>}
+            {vis.includes("mapa") && <TabsTrigger value="mapa" data-testid="clot-tab-mapa">Mapa</TabsTrigger>}
+            {vis.includes("docs") && <TabsTrigger value="docs" data-testid="clot-tab-docs">Documentos</TabsTrigger>}
+            {vis.includes("copys") && <TabsTrigger value="copys" data-testid="clot-tab-copys">Copys</TabsTrigger>}
+            {vis.includes("ia") && <TabsTrigger value="ia" data-testid="clot-tab-ia"><Sparkles className="h-4 w-4 mr-1" /> IA</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="resumo" className="mt-3"><Resumo specs={detailQ.data?.specs} copy={detailQ.data?.copy} /></TabsContent>
-          <TabsContent value="galeria" className="mt-3"><LoteamentoGallery lotId={lot?.id} readOnly /></TabsContent>
-          <TabsContent value="videos" className="mt-3">{lot?.id && <LoteamentoVideos lotId={lot.id} readOnly />}</TabsContent>
-          <TabsContent value="mapa" className="mt-3"><LoteamentoMap lot={lot} /></TabsContent>
-          <TabsContent value="docs" className="mt-3">{lot?.id && <LoteamentoDocs lotId={lot.id} canManage={false} />}</TabsContent>
-          <TabsContent value="copys" className="mt-3">{lot?.id && <LoteamentoCopys lotId={lot.id} readOnly />}</TabsContent>
+          {vis.includes("galeria") && <TabsContent value="galeria" className="mt-3"><LoteamentoGallery lotId={lot?.id} readOnly /></TabsContent>}
+          {vis.includes("videos") && <TabsContent value="videos" className="mt-3">{lot?.id && <LoteamentoVideos lotId={lot.id} readOnly />}</TabsContent>}
+          {vis.includes("mapa") && <TabsContent value="mapa" className="mt-3"><LoteamentoMap lot={lot} /></TabsContent>}
+          {vis.includes("docs") && <TabsContent value="docs" className="mt-3">{lot?.id && <LoteamentoDocs lotId={lot.id} canManage={false} />}</TabsContent>}
+          {vis.includes("copys") && <TabsContent value="copys" className="mt-3">{lot?.id && <LoteamentoCopys lotId={lot.id} readOnly />}</TabsContent>}
 
+          {vis.includes("ia") && (
           <TabsContent value="ia" className="mt-3">
             <div className="rounded-xl border border-border/60 overflow-hidden">
               <div ref={scrollRef} className="h-[46vh] overflow-y-auto p-3 space-y-3 bg-muted/20" data-testid="clot-ai-messages">
@@ -154,6 +157,7 @@ export default function CorretorLoteamentoView({ lot, onOpenChange }) {
               </div>
             </div>
           </TabsContent>
+          )}
         </Tabs>
       </DialogContent>
     </Dialog>

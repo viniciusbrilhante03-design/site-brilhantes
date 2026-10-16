@@ -670,6 +670,7 @@ async def list_loteamentos(user: dict = Depends(get_current_user)):
         d["cover"] = cover.get(d.get("id"))
         d["lat"] = d.get("lat")
         d["lng"] = d.get("lng")
+        d["visible_tabs"] = d.get("visible_tabs")
     docs.sort(key=lambda d: (d.get("order", 9999), (d.get("name") or "").lower()))
     return docs
 
@@ -707,6 +708,9 @@ async def update_loteamento_meta(lot_id: str, request: Request, user: dict = Dep
         upd["phase"] = body["phase"]
     if isinstance(body.get("order"), int):
         upd["order"] = body["order"]
+    if isinstance(body.get("visible_tabs"), list):
+        allowed = {"galeria", "videos", "mapa", "docs", "copys", "ia"}
+        upd["visible_tabs"] = [t for t in body["visible_tabs"] if t in allowed]
     if upd:
         await db.loteamentos.update_one({"id": lot_id}, {"$set": upd})
     return {"ok": True}
@@ -714,14 +718,97 @@ async def update_loteamento_meta(lot_id: str, request: Request, user: dict = Dep
 
 # ---------------- Loteamento: campos técnicos + IA Especialista (Fase 7) ----------------
 _openai_client = None
+_openai_key_cached = None
 
 
-def _get_openai():
-    global _openai_client
-    if _openai_client is None:
+def _get_openai(api_key=None):
+    global _openai_client, _openai_key_cached
+    key = api_key or OPENAI_API_KEY
+    if _openai_client is None or _openai_key_cached != key:
         from openai import AsyncOpenAI
-        _openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        _openai_client = AsyncOpenAI(api_key=key)
+        _openai_key_cached = key
     return _openai_client
+
+
+def _cur_month():
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+async def _ai_settings():
+    return await db.app_settings.find_one({"id": "ai"}, {"_id": 0}) or {}
+
+
+async def _ai_key():
+    s = await _ai_settings()
+    return ((s.get("openai_key") or OPENAI_API_KEY) or "").strip()
+
+
+async def _ai_model():
+    s = await _ai_settings()
+    return s.get("model") or OPENAI_MODEL
+
+
+async def _check_ai_limit():
+    s = await _ai_settings()
+    limit = int(s.get("monthly_limit") or 0)
+    if limit <= 0:
+        return
+    usage = s.get("usage") or {}
+    if usage.get("month") == _cur_month() and int(usage.get("requests") or 0) >= limit:
+        raise HTTPException(status_code=429, detail=f"Limite mensal de uso da IA atingido ({limit} solicitações). Ajuste em Configurações da IA.")
+
+
+async def _record_ai_usage(comp):
+    try:
+        toks = int(getattr(getattr(comp, "usage", None), "total_tokens", 0) or 0)
+    except Exception:
+        toks = 0
+    s = await _ai_settings()
+    usage = s.get("usage") or {}
+    if usage.get("month") != _cur_month():
+        usage = {"month": _cur_month(), "requests": 0, "tokens": 0}
+    usage["requests"] = int(usage.get("requests") or 0) + 1
+    usage["tokens"] = int(usage.get("tokens") or 0) + toks
+    await db.app_settings.update_one({"id": "ai"}, {"$set": {"usage": usage}}, upsert=True)
+
+
+@api_router.get("/settings/ai")
+async def get_ai_settings(user: dict = Depends(require_master)):
+    s = await _ai_settings()
+    key = (s.get("openai_key") or OPENAI_API_KEY) or ""
+    usage = s.get("usage") or {}
+    if usage.get("month") != _cur_month():
+        usage = {"month": _cur_month(), "requests": 0, "tokens": 0}
+    return {
+        "has_key": bool(key),
+        "key_source": "custom" if s.get("openai_key") else ("env" if OPENAI_API_KEY else "none"),
+        "key_masked": ("…" + key[-4:]) if key else "",
+        "model": s.get("model") or OPENAI_MODEL,
+        "monthly_limit": int(s.get("monthly_limit") or 0),
+        "usage": usage,
+    }
+
+
+@api_router.put("/settings/ai")
+async def update_ai_settings(request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    upd = {}
+    k = (body.get("openai_key") or "").strip()
+    if k:
+        upd["openai_key"] = k
+    if body.get("model"):
+        upd["model"] = str(body["model"]).strip()
+    if "monthly_limit" in body:
+        try:
+            upd["monthly_limit"] = max(0, int(body.get("monthly_limit") or 0))
+        except Exception:
+            upd["monthly_limit"] = 0
+    if body.get("reset_usage"):
+        upd["usage"] = {"month": _cur_month(), "requests": 0, "tokens": 0}
+    if upd:
+        await db.app_settings.update_one({"id": "ai"}, {"$set": upd}, upsert=True)
+    return await get_ai_settings(user)
 
 
 def _lot_knowledge_text(doc: dict) -> str:
@@ -889,6 +976,7 @@ async def get_loteamento_details(lot_id: str, user: dict = Depends(get_current_u
     doc.setdefault("copies", [])
     doc.setdefault("knowledge", [])
     doc.setdefault("questions", [])
+    doc.setdefault("visible_tabs", ["galeria", "videos", "mapa", "docs", "copys", "ia"])
     return doc
 
 
@@ -920,8 +1008,10 @@ async def update_loteamento_details(lot_id: str, data: LoteamentoDetails, user: 
 
 @api_router.post("/loteamentos/{lot_id}/ai")
 async def ask_loteamento_ai(lot_id: str, data: AiAsk, user: dict = Depends(get_current_user)):
-    if not OPENAI_API_KEY:
+    _aikey = await _ai_key()
+    if not _aikey:
         raise HTTPException(status_code=400, detail="IA não configurada. Peça ao gestor para cadastrar a chave da OpenAI.")
+    await _check_ai_limit()
     if not (data.message or "").strip():
         raise HTTPException(status_code=400, detail="Digite uma pergunta")
     doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
@@ -953,8 +1043,9 @@ async def ask_loteamento_ai(lot_id: str, data: AiAsk, user: dict = Depends(get_c
     messages += [{"role": m["role"], "content": m["content"]} for m in history]
     messages.append({"role": "user", "content": data.message.strip()})
     try:
-        comp = await _get_openai().chat.completions.create(
-            model=OPENAI_MODEL, messages=messages, temperature=0.2, max_tokens=700)
+        comp = await _get_openai(_aikey).chat.completions.create(
+            model=await _ai_model(), messages=messages, temperature=0.2, max_tokens=700)
+        await _record_ai_usage(comp)
         answer = comp.choices[0].message.content or "Não consegui gerar uma resposta."
     except Exception as e:
         logger.warning(f"openai request failed: {type(e).__name__}: {str(e)[:150]}")
@@ -972,8 +1063,10 @@ async def ask_loteamento_ai(lot_id: str, data: AiAsk, user: dict = Depends(get_c
 
 @api_router.post("/loteamentos/{lot_id}/generate-copy")
 async def generate_lot_copy(lot_id: str, channel: str = "whatsapp", user: dict = Depends(require_master)):
-    if not OPENAI_API_KEY:
+    _aikey = await _ai_key()
+    if not _aikey:
         raise HTTPException(status_code=400, detail="IA não configurada. Peça ao gestor para cadastrar a chave da OpenAI.")
+    await _check_ai_limit()
     doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Loteamento não encontrado")
@@ -1000,10 +1093,11 @@ async def generate_lot_copy(lot_id: str, channel: str = "whatsapp", user: dict =
             contato += f" - {user['phone']}"
         user_msg += f"\n\nFinalize com o contato do corretor para o cliente chamar: {contato}"
     try:
-        comp = await _get_openai().chat.completions.create(
-            model=OPENAI_MODEL,
+        comp = await _get_openai(_aikey).chat.completions.create(
+            model=await _ai_model(),
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
             temperature=0.75, max_tokens=500)
+        await _record_ai_usage(comp)
         copy = (comp.choices[0].message.content or "").strip()
     except Exception as e:
         logger.warning(f"openai copy failed: {type(e).__name__}: {str(e)[:150]}")
@@ -1229,8 +1323,10 @@ async def delete_copy(lot_id: str, cid: str, user: dict = Depends(require_master
 
 @api_router.post("/loteamentos/{lot_id}/copies/generate")
 async def generate_copy_cat(lot_id: str, request: Request, user: dict = Depends(require_master)):
-    if not OPENAI_API_KEY:
+    _aikey = await _ai_key()
+    if not _aikey:
         raise HTTPException(status_code=400, detail="IA não configurada.")
+    await _check_ai_limit()
     body = await request.json()
     category = (body.get("category") or "Geral").strip()
     channel = body.get("channel") or "whatsapp"
@@ -1247,10 +1343,11 @@ async def generate_copy_cat(lot_id: str, request: Request, user: dict = Depends(
     system = ("Você é redator de marketing imobiliário da Brilhante's Imóveis. " + fmt +
               f" Foque na categoria '{category}'. Use SOMENTE os dados fornecidos, nunca invente valores ou condições. Responda só com o texto.")
     try:
-        comp = await _get_openai().chat.completions.create(
-            model=OPENAI_MODEL, messages=[{"role": "system", "content": system},
+        comp = await _get_openai(_aikey).chat.completions.create(
+            model=await _ai_model(), messages=[{"role": "system", "content": system},
                                           {"role": "user", "content": f"Loteamento: {doc.get('name')}\n\n{ctx}"}],
             temperature=0.75, max_tokens=500)
+        await _record_ai_usage(comp)
         text = (comp.choices[0].message.content or "").strip()
     except Exception as e:
         logger.warning(f"copy cat failed: {type(e).__name__}: {str(e)[:120]}")

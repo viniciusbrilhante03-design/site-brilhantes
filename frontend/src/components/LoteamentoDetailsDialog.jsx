@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Sparkles, Send, Megaphone, GraduationCap, Wand2, Loader2 } from "lucide-react";
+import { Sparkles, Send, Megaphone, GraduationCap, Wand2, Loader2, Eye } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import LoteamentoSpecsForm, { mergeSpecs, EMPTY_SPECS } from "@/components/LoteamentoSpecsForm";
 import LoteamentoGallery from "@/components/LoteamentoGallery";
 import LoteamentoCopys from "@/components/LoteamentoCopys";
@@ -33,6 +35,7 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
   const [training, setTraining] = useState("");
   const [updatedAt, setUpdatedAt] = useState(null);
   const [genLoading, setGenLoading] = useState(false);
+  const [visTabs, setVisTabs] = useState(["galeria", "videos", "mapa", "docs", "copys", "ia"]);
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -50,6 +53,7 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
       setCopy(detailQ.data.copy || "");
       setTraining(detailQ.data.ai_training || "");
       setUpdatedAt(detailQ.data.details_updated_at || null);
+      if (Array.isArray(detailQ.data.visible_tabs)) setVisTabs(detailQ.data.visible_tabs);
     }
   }, [detailQ.data]);
 
@@ -74,6 +78,15 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
       setMessages((m) => [...m, { role: "assistant", content: typeof d === "string" ? d : "Serviço de IA indisponível no momento." }]);
     },
   });
+
+  const visMut = useMutation({
+    mutationFn: (tabs) => api.patch(`/loteamentos/${lot.id}/meta`, { visible_tabs: tabs }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["loteamentos"] }),
+  });
+  const toggleTab = (t) => {
+    const next = visTabs.includes(t) ? visTabs.filter((x) => x !== t) : [...visTabs, t];
+    setVisTabs(next); visMut.mutate(next);
+  };
 
   const generateCopy = async (channel) => {
     setGenLoading(true);
@@ -113,6 +126,23 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
             {lastUpdate && <span className="block text-[11px] mt-0.5 text-muted-foreground">Última atualização: {lastUpdate}</span>}
           </DialogDescription>
         </DialogHeader>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5 self-start h-8" data-testid="lot-visibility-btn"><Eye className="h-4 w-4" /> Abas visíveis p/ corretor</Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56" data-testid="lot-visibility-popover">
+            <div className="text-xs text-muted-foreground mb-2">Resumo é sempre visível. Escolha o que o corretor vê:</div>
+            <div className="space-y-1.5">
+              {[["galeria", "Galeria"], ["videos", "Vídeos"], ["mapa", "Mapa"], ["docs", "Documentos"], ["copys", "Copys"], ["ia", "IA"]].map(([v, l]) => (
+                <label key={v} className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+                  <Checkbox checked={visTabs.includes(v)} onCheckedChange={() => toggleTab(v)} data-testid={`lot-vis-${v}`} />
+                  <span>{l}</span>
+                </label>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
 
         <Tabs defaultValue="dados">
           <TabsList className="flex-wrap h-auto">
