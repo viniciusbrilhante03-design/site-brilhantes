@@ -11,6 +11,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Sparkles, Send, Megaphone, GraduationCap, Wand2, Loader2 } from "lucide-react";
 import LoteamentoSpecsForm, { mergeSpecs, EMPTY_SPECS } from "@/components/LoteamentoSpecsForm";
 import LoteamentoGallery from "@/components/LoteamentoGallery";
+import LoteamentoCopys from "@/components/LoteamentoCopys";
+import LoteamentoKnowledge from "@/components/LoteamentoKnowledge";
 
 function fmtUpdated(iso) {
   if (!iso) return null;
@@ -113,6 +115,8 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
           <TabsList>
             <TabsTrigger value="dados" data-testid="lot-tab-dados">Informações</TabsTrigger>
             <TabsTrigger value="galeria" data-testid="lot-tab-galeria">Galeria</TabsTrigger>
+            <TabsTrigger value="copys" data-testid="lot-tab-copys">Copys</TabsTrigger>
+            <TabsTrigger value="base" data-testid="lot-tab-base">Base IA</TabsTrigger>
             <TabsTrigger value="ia" data-testid="lot-tab-ia"><Sparkles className="h-4 w-4 mr-1" /> IA Especialista</TabsTrigger>
           </TabsList>
 
@@ -155,6 +159,14 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
 
           <TabsContent value="galeria" className="mt-3">
             <LoteamentoGallery lotId={lot?.id} />
+          </TabsContent>
+
+          <TabsContent value="copys" className="mt-3">
+            {lot?.id && <LoteamentoCopys lotId={lot.id} />}
+          </TabsContent>
+
+          <TabsContent value="base" className="mt-3">
+            {lot?.id && <LoteamentoKnowledge lotId={lot.id} />}
           </TabsContent>
 
           <TabsContent value="ia" className="mt-3">

@@ -386,6 +386,20 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
   27 cards → Gerenciar abre o cadastro completo (Informações/Galeria/IA); ranking alternando p/ Loteamentos (Casa Praia Grande 1º).
 - IMPORTANTE: tudo em PREVIEW. App publicado ainda é a versão antiga → **REPUBLICAR** para refletir no app ao vivo.
 
+### Iteração 34 (2026-06 fork) — Copys por categoria + Base de conhecimento IA + Perguntas sem resposta ✅
+- **Copys por categoria (ARTE 14)**: `copies[]` no doc loteamento. POST/PUT/DELETE `/loteamentos/{id}/copies` + POST
+  `/loteamentos/{id}/copies/generate` {category, channel} (IA gera por categoria usando specs+galeria+conhecimento).
+  Frontend `LoteamentoCopys.jsx` (aba "Copys"): criar/gerar com IA/copiar/excluir, filtro por categoria (Localização/Valores/Infraestrutura/Geral).
+- **Base de conhecimento da IA (ARTE 16)**: `knowledge[]` no doc. POST/DELETE `/loteamentos/{id}/knowledge` (tipos texto/link/qa).
+  `_lot_knowledge_text` entra no contexto da IA e da geração de copy. Frontend `LoteamentoKnowledge.jsx` (aba "Base IA").
+- **Perguntas sem resposta (ARTE 16)**: quando o CORRETOR pergunta algo fora dos dados, a IA recusa e a pergunta é registrada
+  em `questions[]`; gestor é notificado (lot_question). GET `/loteamentos/{id}/questions` + POST `.../answer` → resposta vira
+  conhecimento Q&A e marca a pergunta como respondida.
+- Validado (curl): add/gerar/excluir copy; add knowledge; corretor pergunta "taxa de condomínio" → IA recusa → pergunta logada
+  (Carlão) → gestor vê em "Perguntas sem resposta"; responder vira conhecimento. UI (screenshot): abas Copys e Base IA OK. Dados limpos.
+- PENDENTE do mockup (próximo): Configurações OpenAI (ARTE 17: trocar chave/modelo/limite/uso), abas Vídeos/Mapa +
+  "Abas visíveis p/ corretores" (ARTE 13), "Organizar ordem" (drag) na lista, anexar PDF na Base IA. **REPUBLICAR** p/ produção.
+
 ### Iteração 33 (2026-06 fork) — Lista de Loteamentos no estilo do mockup (ARTE 12) ✅
 - Usuário enviou mockups (Folhas 5 e 6) com o design-alvo da área Loteamentos (lista com status/foto/ordenar; abas
   Fotos/Vídeos/Mapa/Informações/Copys; Copys por categoria; IA "O que a IA sabe" com PDFs/links/Q&A; tela OpenAI).

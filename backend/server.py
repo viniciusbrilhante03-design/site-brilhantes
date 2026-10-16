@@ -648,6 +648,19 @@ def _get_openai():
     return _openai_client
 
 
+def _lot_knowledge_text(doc: dict) -> str:
+    out = []
+    for k in (doc.get("knowledge") or []):
+        t = k.get("type")
+        if t == "qa" and (k.get("question") or k.get("answer")):
+            out.append(f"P: {k.get('question','')} | R: {k.get('answer','')}")
+        elif t == "link" and k.get("content"):
+            out.append(f"Link ({k.get('title') or 'site'}): {k['content']}")
+        elif k.get("content"):
+            out.append(f"{k.get('title') or 'Nota'}: {k['content']}")
+    return "\n".join(f"- {x}" for x in out)
+
+
 _LOT_STATUS = {"nao_iniciada": "Não iniciada", "em_andamento": "Em andamento",
                "fase_final": "Fase final", "concluida": "Concluída", "entregue": "Entregue"}
 _LOT_TIPO = {"aberto": "Loteamento aberto", "fechado": "Loteamento fechado"}
@@ -797,6 +810,9 @@ async def get_loteamento_details(lot_id: str, user: dict = Depends(get_current_u
     doc.setdefault("copy", "")
     doc.setdefault("ai_training", "")
     doc.setdefault("specs", {})
+    doc.setdefault("copies", [])
+    doc.setdefault("knowledge", [])
+    doc.setdefault("questions", [])
     return doc
 
 
@@ -833,6 +849,9 @@ async def ask_loteamento_ai(lot_id: str, data: AiAsk, user: dict = Depends(get_c
     gal = await _lot_gallery_text(lot_id)
     if gal:
         ctx = (ctx + "\n\nGALERIA (diferenciais visuais):\n" + gal).strip()
+    kn = _lot_knowledge_text(doc)
+    if kn:
+        ctx = (ctx + "\n\nBASE DE CONHECIMENTO:\n" + kn).strip()
     ctx = ctx or "(nenhuma informação cadastrada)"
     system = (
         f"Você é um assistente especialista no loteamento '{doc.get('name')}' da Brilhante's Imóveis. "
@@ -858,6 +877,14 @@ async def ask_loteamento_ai(lot_id: str, data: AiAsk, user: dict = Depends(get_c
     except Exception as e:
         logger.warning(f"openai request failed: {type(e).__name__}: {str(e)[:150]}")
         raise HTTPException(status_code=502, detail="Serviço de IA indisponível no momento.")
+    low = (answer or "").lower()
+    if user.get("role") == "corretor" and any(s in low for s in ["não foi inform", "nao foi inform", "não está cadastr", "confirmar com o gestor", "não informad", "nao informad"]):
+        qitem = {"id": f"q_{uuid.uuid4().hex[:10]}", "question": data.message.strip(), "asked_by": _display(user),
+                 "answer": answer, "status": "open", "created_at": datetime.now(timezone.utc).isoformat()}
+        await db.loteamentos.update_one({"id": lot_id}, {"$push": {"questions": qitem}})
+        masters = await db.users.find({"role": "master"}, {"_id": 0, "user_id": 1}).to_list(50)
+        for m in masters:
+            await _notify(m["user_id"], "lot_question", f"❓ {_display(user)} perguntou sobre '{doc.get('name')}': {data.message.strip()[:80]}", {"lot_id": lot_id})
     return {"answer": answer}
 
 
@@ -980,6 +1007,110 @@ async def delete_lot_image(img_id: str, user: dict = Depends(require_master)):
     res = await db.lot_images.delete_one({"id": img_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Imagem não encontrada")
+    return {"ok": True}
+
+
+# ---------------- Copys por categoria + Base de conhecimento IA + Perguntas ----------------
+class CopyItem(BaseModel):
+    category: str = "Geral"
+    text: str = ""
+
+
+@api_router.post("/loteamentos/{lot_id}/copies")
+async def add_copy(lot_id: str, data: CopyItem, user: dict = Depends(require_master)):
+    item = {"id": f"cp_{uuid.uuid4().hex[:8]}", "category": (data.category or "Geral").strip(), "text": (data.text or "").strip()}
+    await db.loteamentos.update_one({"id": lot_id}, {"$push": {"copies": item}})
+    return item
+
+
+@api_router.put("/loteamentos/{lot_id}/copies/{cid}")
+async def update_copy(lot_id: str, cid: str, data: CopyItem, user: dict = Depends(require_master)):
+    await db.loteamentos.update_one({"id": lot_id, "copies.id": cid},
+                                    {"$set": {"copies.$.category": (data.category or "Geral").strip(), "copies.$.text": (data.text or "").strip()}})
+    return {"ok": True}
+
+
+@api_router.delete("/loteamentos/{lot_id}/copies/{cid}")
+async def delete_copy(lot_id: str, cid: str, user: dict = Depends(require_master)):
+    await db.loteamentos.update_one({"id": lot_id}, {"$pull": {"copies": {"id": cid}}})
+    return {"ok": True}
+
+
+@api_router.post("/loteamentos/{lot_id}/copies/generate")
+async def generate_copy_cat(lot_id: str, request: Request, user: dict = Depends(require_master)):
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=400, detail="IA não configurada.")
+    body = await request.json()
+    category = (body.get("category") or "Geral").strip()
+    channel = body.get("channel") or "whatsapp"
+    doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Loteamento não encontrado")
+    ctx = _lot_specs_to_text(doc)
+    kn = _lot_knowledge_text(doc)
+    if kn:
+        ctx = (ctx + "\n\nBASE DE CONHECIMENTO:\n" + kn).strip()
+    if not ctx.strip():
+        raise HTTPException(status_code=400, detail="Cadastre as informações do loteamento antes de gerar a copy.")
+    fmt = _COPY_CHANNELS.get(channel, _COPY_CHANNELS["whatsapp"])
+    system = ("Você é redator de marketing imobiliário da Brilhante's Imóveis. " + fmt +
+              f" Foque na categoria '{category}'. Use SOMENTE os dados fornecidos, nunca invente valores ou condições. Responda só com o texto.")
+    try:
+        comp = await _get_openai().chat.completions.create(
+            model=OPENAI_MODEL, messages=[{"role": "system", "content": system},
+                                          {"role": "user", "content": f"Loteamento: {doc.get('name')}\n\n{ctx}"}],
+            temperature=0.75, max_tokens=500)
+        text = (comp.choices[0].message.content or "").strip()
+    except Exception as e:
+        logger.warning(f"copy cat failed: {type(e).__name__}: {str(e)[:120]}")
+        raise HTTPException(status_code=502, detail="Serviço de IA indisponível no momento.")
+    return {"text": text}
+
+
+class KnowledgeItem(BaseModel):
+    type: str = "texto"
+    title: str = ""
+    content: str = ""
+    question: str = ""
+    answer: str = ""
+
+
+@api_router.post("/loteamentos/{lot_id}/knowledge")
+async def add_knowledge(lot_id: str, data: KnowledgeItem, user: dict = Depends(require_master)):
+    item = {"id": f"kn_{uuid.uuid4().hex[:8]}", "type": data.type if data.type in ("texto", "link", "qa") else "texto",
+            "title": (data.title or "").strip(), "content": (data.content or "").strip(),
+            "question": (data.question or "").strip(), "answer": (data.answer or "").strip(),
+            "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.loteamentos.update_one({"id": lot_id}, {"$push": {"knowledge": item}})
+    return item
+
+
+@api_router.delete("/loteamentos/{lot_id}/knowledge/{kid}")
+async def delete_knowledge(lot_id: str, kid: str, user: dict = Depends(require_master)):
+    await db.loteamentos.update_one({"id": lot_id}, {"$pull": {"knowledge": {"id": kid}}})
+    return {"ok": True}
+
+
+@api_router.get("/loteamentos/{lot_id}/questions")
+async def list_questions(lot_id: str, user: dict = Depends(require_master)):
+    doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0, "questions": 1})
+    return [q for q in ((doc or {}).get("questions") or []) if q.get("status") == "open"]
+
+
+@api_router.post("/loteamentos/{lot_id}/questions/{qid}/answer")
+async def answer_question(lot_id: str, qid: str, request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    ans = (body.get("answer") or "").strip()
+    if not ans:
+        raise HTTPException(status_code=400, detail="Informe a resposta")
+    doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0, "questions": 1})
+    q = next((x for x in ((doc or {}).get("questions") or []) if x.get("id") == qid), None)
+    if not q:
+        raise HTTPException(status_code=404, detail="Pergunta não encontrada")
+    kn = {"id": f"kn_{uuid.uuid4().hex[:8]}", "type": "qa", "title": "", "content": "",
+          "question": q.get("question", ""), "answer": ans, "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.loteamentos.update_one({"id": lot_id}, {"$push": {"knowledge": kn}})
+    await db.loteamentos.update_one({"id": lot_id, "questions.id": qid}, {"$set": {"questions.$.status": "answered"}})
     return {"ok": True}
 
 
