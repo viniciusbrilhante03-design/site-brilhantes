@@ -1,0 +1,22 @@
+{
+  "summary": "Tested AI Settings (GET/PUT /api/settings/ai, master vs corretor auth, key preservation, reset_usage) and loteamento visible_tabs feature (PATCH /meta persistence, invalid-tab filtering, list/details exposure, corretor forbidden). Frontend verified: gestor AI dialog (btn-open-ai-settings) with all testids present (ai-usage/key-input/model-select/limit-input/save/reset-usage) and Toast on save; lot-visibility-btn popover with lot-vis-* checkboxes; corretor view correctly hides clot-tab-copys and clot-tab-ia while Resumo/Galeria/Vídeos/Mapa/Documentos remain visible. Backend monthly-limit 429 enforcement verified via code review only (skipped live call to avoid OpenAI cost; _check_ai_limit logic correctly checks month+requests). Cleanup done: visible_tabs restored to all 6 on lot_30d7a6afa9, monthly_limit back to 0.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_ai_settings_and_visible_tabs.py",
+    "/app/test_reports/pytest/iter17.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "monthly_limit 429 path not covered by live test to avoid real OpenAI cost; logic looks correct but recommend adding a dev-only usage injector endpoint (or unit test with mocked db) to enable repeatable 429 regression tests.",
+    "/app/backend/server.py is 4054 lines — consider splitting into feature modules (settings, loteamentos, ai, auth) for maintainability."
+  ],
+  "updated_files": ["/app/backend/tests/test_ai_settings_and_visible_tabs.py"],
+  "success_rate": {"backend": "100% (10 passed, 1 skipped by design)", "frontend": "100%"},
+  "test_credentials": "master cookie session_token=qa_session_vinicius_001; corretor carlos.teste@brilhantes.com / 12345678900",
+  "seed_data_creation": "None; used existing lot_30d7a6afa9 (Apto 1203 - Ed. Aurora); all state restored.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "AI settings and visible_tabs features are fully functional. For future 429-limit testing without cost, consider mocking OpenAI client or exposing an admin-only usage-injection endpoint.",
+  "rca of the issue": "N/A — no issues found."
+}

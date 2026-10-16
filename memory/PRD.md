@@ -426,6 +426,11 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
 - **Google Maps**: loader `lib/gmaps.js` corrigido (removido `loading=async` que quebrava o `new Map`). Chave `AIza...` é **válida** e carrega o Maps JS, mas tem **restrição de referrer** → no preview dá `RefererNotAllowedMapError`. É preciso autorizar os domínios (preview + produção) nas restrições da chave no Google Cloud Console (e ter o "Maps JavaScript API" ativo + billing).
 - Testado: testing_agent — backend 17/17 pytest + frontend 100% (iteration_16.json). **REPUBLICAR** p/ produção.
 
+### Iteração 39 (2026-06 fork) — Config da IA (chave/modelo/limite/uso) + Abas visíveis por corretor ✅
+- **Config da IA (ARTE 17)**: coleção `app_settings` (id="ai"). GET/PUT `/settings/ai` (master): trocar chave OpenAI (nunca exibida, só mascarada), modelo, **limite mensal** de solicitações e ver **uso** (requests+tokens do mês); `reset_usage`. As 3 chamadas de IA agora usam chave/modelo efetivos (custom do settings OU env), checam o limite (429 ao estourar) e registram uso. Frontend `AiSettingsDialog.jsx` + botão "IA" (btn-open-ai-settings) no header do gestor.
+- **Abas visíveis por corretor**: `visible_tabs` no doc do loteamento (default todas). PATCH `/loteamentos/{id}/meta` aceita `visible_tabs`; exposto em list/details. Gestor define via popover "Abas visíveis p/ corretor" (lot-visibility-btn) no LoteamentoDetailsDialog; o CorretorLoteamentoView só mostra as abas liberadas (Resumo sempre).
+- Testado: testing_agent — backend 10/10 (+1 skip por design) + frontend 100% (iteration_17.json). **REPUBLICAR** p/ produção. ✅ **Todos os itens P1 do mockup concluídos.**
+
 ### Iteração 34 (2026-06 fork) — Copys por categoria + Base de conhecimento IA + Perguntas sem resposta ✅
 - **Copys por categoria (ARTE 14)**: `copies[]` no doc loteamento. POST/PUT/DELETE `/loteamentos/{id}/copies` + POST
   `/loteamentos/{id}/copies/generate` {category, channel} (IA gera por categoria usando specs+galeria+conhecimento).
