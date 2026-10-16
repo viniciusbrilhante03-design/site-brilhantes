@@ -420,6 +420,12 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
 - Testado: testing_agent — backend 22/22 pytest + frontend 100% (iteration_15.json). ⚠️ No preview o Google Maps pode cair em erro por **restrição de referrer da chave** — adicionar os domínios preview+produção nas restrições da chave Google. **REPUBLICAR** p/ produção.
 - PENDENTE P1 restante: ARTE 17 (tela de Config OpenAI: trocar chave/modelo/limite/uso), "abas visíveis p/ corretores" + **catálogo de loteamentos para o corretor** (hoje só o gestor vê vídeos/docs/mapa).
 
+### Iteração 38 (2026-06 fork) — Catálogo de Loteamentos para o Corretor (somente leitura) ✅
+- **Catálogo do corretor**: botão "Loteamentos" no header do corretor → `CorretorLoteamentosDialog.jsx` (lista read-only: busca, filtros, Mapa geral) → `CorretorLoteamentoView.jsx` com abas Resumo (specs + copy de divulgação), Galeria, Vídeos, Mapa, Documentos (baixar), Copys (copiar) e IA (chat).
+- **readOnly**: props `readOnly` em LoteamentoGallery/Videos/Copys e `canManage=false` em LoteamentoDocs escondem toda a edição p/ o corretor; o gestor (LoteamentoDetailsDialog) mantém edição total. Backend já bloqueia mutações com `require_master` (defense-in-depth).
+- **Google Maps**: loader `lib/gmaps.js` corrigido (removido `loading=async` que quebrava o `new Map`). Chave `AIza...` é **válida** e carrega o Maps JS, mas tem **restrição de referrer** → no preview dá `RefererNotAllowedMapError`. É preciso autorizar os domínios (preview + produção) nas restrições da chave no Google Cloud Console (e ter o "Maps JavaScript API" ativo + billing).
+- Testado: testing_agent — backend 17/17 pytest + frontend 100% (iteration_16.json). **REPUBLICAR** p/ produção.
+
 ### Iteração 34 (2026-06 fork) — Copys por categoria + Base de conhecimento IA + Perguntas sem resposta ✅
 - **Copys por categoria (ARTE 14)**: `copies[]` no doc loteamento. POST/PUT/DELETE `/loteamentos/{id}/copies` + POST
   `/loteamentos/{id}/copies/generate` {category, channel} (IA gera por categoria usando specs+galeria+conhecimento).

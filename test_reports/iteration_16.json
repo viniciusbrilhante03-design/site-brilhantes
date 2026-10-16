@@ -1,0 +1,29 @@
+{
+  "summary": "Testes do catálogo read-only do corretor (loteamentos). Backend: 17/17 PASSED em /app/backend/tests/test_corretor_loteamento_readonly.py — corretor (login carlos.teste@brilhantes.com) consegue GET /loteamentos, /loteamentos/{id}/details, /loteamentos/{id}/videos, /loteamentos/{id}/docs, /loteamentos/{id}/images e baixar /loteamentos/docs/{id}/download (doc seedado via master, removido no teardown); recebe 401/403 em TODAS as mutações: POST /loteamentos, PATCH .../meta, PUT .../details, POST .../generate-copy, POST .../images, POST .../videos/link, POST .../videos/upload, POST .../docs, DELETE .../docs/{id}, POST /loteamentos/reorder, POST .../copies. Frontend (corretor): btn-open-loteamentos abre corretor-loteamentos-dialog com clot-search, clot-filter-all/em_vendas/lancamento/entregue, clot-open-map e 32 clot-card-<id>. Ao clicar em clot-open-<id> abre corretor-lot-view com 7 abas (clot-tab-resumo/galeria/videos/mapa/docs/copys/ia). Resumo mostra specs. Verificado por querySelector que NÃO existem: lot-gallery-dropzone/input, lot-image-del-*, video-title/url/add-link/upload-*, video-del-*, copy-category/generate/text/save, copy-del-*, doc-title/category/upload-*, doc-del-* — apenas doc-download-<id> aparece quando há doc. IA (clot-ai-input/clot-ai-send) retorna resposta do backend após ~5s. Regressão gestor: LoteamentoDetailsDialog.jsx usa <LoteamentoGallery/>, <LoteamentoVideos/>, <LoteamentoCopys/> (defaults readOnly=false) e <LoteamentoDocs canManage/> — controles de edição permanecem; iteration_15.json já validou end-to-end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Corretor → Loteamento → Mapa / Mapa geral", "issues": ["Google Maps mostra RefererNotAllowedMapError no preview (restrição de domínio na chave REACT_APP_GOOGLE_MAPS_API_KEY). Container monta corretamente; NÃO é bug de código, conforme indicado no review request."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_corretor_loteamento_readonly.py",
+    "/app/test_reports/pytest/corretor_readonly.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "CorretorLoteamentoView passa somente readOnly para Gallery/Videos/Copys e canManage=false para Docs — isolamento 100% baseado em props no frontend; o backend já faz require_master em todas as mutações, então mesmo manipulando o DOM o corretor seria bloqueado (defense-in-depth OK).",
+    "LoteamentoDocs lista 'download' sem verificar se o doc existe no estado — ok, lista vem do backend.",
+    "GET /api/loteamentos retorna lista completa também para o corretor; aceitável para o catálogo. Se um dia houver loteamentos privados, filtrar por visibility no backend.",
+    "server.py segue com >3900 linhas (feedback repetido das iterações anteriores) — recomenda split em módulos."
+  ],
+  "updated_files": ["/app/backend/tests/test_corretor_loteamento_readonly.py"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100%"},
+  "test_credentials": "Corretor: carlos.teste@brilhantes.com / 12345678900. Master Bearer/cookie: qa_session_vinicius_001.",
+  "seed_data_creation": "1 doc PDF 'TEST_corretor.pdf' criado via master em /loteamentos/{primeiro_id}/docs para testar download do corretor; DELETADO no teardown da fixture. Base demo não alterada.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Catálogo read-only do corretor 100% verde. Arquivo de testes: /app/backend/tests/test_corretor_loteamento_readonly.py. Para UI corretor: login via [data-testid=login-submit] (NÃO usar get_by_role('button', name='Entrar') — há 2 botões com esse texto, inclui 'Entrar como gestor (Google)'). Abas corretor com prefix 'clot-tab-'. Edição é bloqueada SOMENTE no CorretorLoteamentoView via props readOnly/canManage=false; o LoteamentoDetailsDialog (gestor) continua full-edit."
+}
