@@ -1772,6 +1772,12 @@ async def toggle_installment(sale_id: str, number: int, user: dict = Depends(get
     if not sale:
         raise HTTPException(status_code=404, detail="Venda não encontrada")
     installments = sale.get("installments", [])
+    if number == 0 and not installments:
+        now_received = not sale.get("commission_received", False)
+        upd = {"commission_received": now_received,
+               "commission_received_at": datetime.now(timezone.utc).isoformat() if now_received else None}
+        await db.sales.update_one({"id": sale_id}, {"$set": upd})
+        return await db.sales.find_one({"id": sale_id}, {"_id": 0})
     found = False
     for inst in installments:
         if inst["number"] == number:
@@ -3676,7 +3682,22 @@ async def _report_sales(user, month, year, start, end):
     return await list_sales(month=month, year=year, user=user)
 
 
-async def _build_report(user, month, year, start, end, loteamento, corretor, status):
+def _sale_pay_in_range(s, start, end):
+    if not start and not end:
+        return True
+    for inst in (s.get("installments") or []):
+        for p in (inst.get("payments") or []):
+            d = (p.get("date") or (p.get("at") or "")[:10])
+            if d and (not start or d >= start) and (not end or d <= end):
+                return True
+    if s.get("commission_received"):
+        d = (s.get("commission_received_at") or s.get("sale_date") or "")[:10]
+        if d and (not start or d >= start) and (not end or d <= end):
+            return True
+    return False
+
+
+async def _build_report(user, month, year, start, end, loteamento, corretor, status, pay_start=None, pay_end=None):
     sales = await _report_sales(user, month, year, start, end)
     lot = _norm_name(loteamento) if loteamento else ""
     rows = []
@@ -3684,6 +3705,8 @@ async def _build_report(user, month, year, start, end, loteamento, corretor, sta
         if lot and _norm_name(s.get("property_name")) != lot:
             continue
         if corretor and not _sale_has_corretor(s, corretor):
+            continue
+        if (pay_start or pay_end) and not _sale_pay_in_range(s, pay_start, pay_end):
             continue
         row = _report_row(s, user)
         if status and row["status_key"] != status:
@@ -3702,8 +3725,9 @@ async def _build_report(user, month, year, start, end, loteamento, corretor, sta
 async def commissions_report(month: Optional[int] = None, year: Optional[int] = None,
                              start: Optional[str] = None, end: Optional[str] = None,
                              loteamento: Optional[str] = None, corretor: Optional[str] = None,
-                             status: Optional[str] = None, user: dict = Depends(get_current_user)):
-    rows, summary = await _build_report(user, month, year, start, end, loteamento, corretor, status)
+                             status: Optional[str] = None, pay_start: Optional[str] = None,
+                             pay_end: Optional[str] = None, user: dict = Depends(get_current_user)):
+    rows, summary = await _build_report(user, month, year, start, end, loteamento, corretor, status, pay_start, pay_end)
     return {"rows": rows, "summary": summary, "can_edit": user.get("role") != "corretor"}
 
 
@@ -3720,8 +3744,9 @@ async def commissions_report_xlsx(month: Optional[int] = None, year: Optional[in
                                   start: Optional[str] = None, end: Optional[str] = None,
                                   loteamento: Optional[str] = None, corretor: Optional[str] = None,
                                   status: Optional[str] = None, columns: Optional[str] = None,
+                                  pay_start: Optional[str] = None, pay_end: Optional[str] = None,
                                   user: dict = Depends(get_current_user)):
-    rows, _ = await _build_report(user, month, year, start, end, loteamento, corretor, status)
+    rows, _ = await _build_report(user, month, year, start, end, loteamento, corretor, status, pay_start, pay_end)
     cols = _report_cols(columns)
     df = pd.DataFrame(rows, columns=REPORT_COLUMNS)[cols] if rows else pd.DataFrame(columns=cols)
     buf = io.BytesIO()
@@ -3740,6 +3765,7 @@ async def commissions_report_pdf(month: Optional[int] = None, year: Optional[int
                                  start: Optional[str] = None, end: Optional[str] = None,
                                  loteamento: Optional[str] = None, corretor: Optional[str] = None,
                                  status: Optional[str] = None, columns: Optional[str] = None,
+                                 pay_start: Optional[str] = None, pay_end: Optional[str] = None,
                                  user: dict = Depends(get_current_user)):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib import colors
@@ -3747,7 +3773,7 @@ async def commissions_report_pdf(month: Optional[int] = None, year: Optional[int
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
-    rows, summary = await _build_report(user, month, year, start, end, loteamento, corretor, status)
+    rows, summary = await _build_report(user, month, year, start, end, loteamento, corretor, status, pay_start, pay_end)
     cols = _report_cols(columns)
 
     buf = io.BytesIO()

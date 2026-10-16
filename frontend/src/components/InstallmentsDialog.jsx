@@ -20,6 +20,7 @@ export default function InstallmentsDialog({ open, onOpenChange, sale, onBaixa, 
   const [kind, setKind] = useState("repasse");
   const [receipt, setReceipt] = useState("");
   const [receiptName, setReceiptName] = useState("");
+  const [paidDate, setPaidDate] = useState("");
   const fileRef = useRef(null);
   if (!sale) return null;
 
@@ -31,7 +32,7 @@ export default function InstallmentsDialog({ open, onOpenChange, sale, onBaixa, 
   const pending = Math.max((insts.reduce((s, i) => s + net(i), 0) || cv) - received, 0);
   const overdue = insts.filter((i) => i.status === "vencida").reduce((s, i) => s + (net(i) - paidOf(i)), 0);
 
-  const startBaixa = (i) => { setOpenRow(i.number); setAmount(String(Math.max(net(i) - paidOf(i), 0))); setMethod("PIX"); setKind("repasse"); setReceipt(""); setReceiptName(""); };
+  const startBaixa = (i) => { setOpenRow(i.number); setAmount(String(Math.max(net(i) - paidOf(i), 0))); setMethod("PIX"); setKind("repasse"); setReceipt(""); setReceiptName(""); setPaidDate(new Date().toISOString().slice(0, 10)); };
   const handleReceipt = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -40,7 +41,7 @@ export default function InstallmentsDialog({ open, onOpenChange, sale, onBaixa, 
     reader.readAsDataURL(file);
   };
   const confirm = (i) => {
-    onBaixa(sale.id, i.number, { amount: parseFloat(amount) || 0, method, kind, receipt, receipt_name: receiptName });
+    onBaixa(sale.id, i.number, { amount: parseFloat(amount) || 0, method, kind, receipt, receipt_name: receiptName, date: paidDate });
     setOpenRow(null);
   };
 
@@ -92,6 +93,7 @@ export default function InstallmentsDialog({ open, onOpenChange, sale, onBaixa, 
                 {openRow === inst.number && (
                   <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/40 pt-3" data-testid={`baixa-form-${inst.number}`}>
                     <div><label className="text-xs text-muted-foreground">Valor</label><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} data-testid={`baixa-amount-${inst.number}`} /></div>
+                    <div><label className="text-xs text-muted-foreground">Data de pagamento</label><Input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} data-testid={`baixa-date-${inst.number}`} /></div>
                     <div><label className="text-xs text-muted-foreground">Forma</label>
                       <select value={method} onChange={(e) => setMethod(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" data-testid={`baixa-method-${inst.number}`}>
                         <option>PIX</option><option>Boleto</option><option>Transferência</option>

@@ -32,12 +32,14 @@ export default function CommissionsReport({ canEdit }) {
   const [loteamento, setLoteamento] = useState("");
   const [corretor, setCorretor] = useState("");
   const [status, setStatus] = useState("");
+  const [payStart, setPayStart] = useState("");
+  const [payEnd, setPayEnd] = useState("");
   const [cols, setCols] = useState(ALL_COLS);
   const [grouped, setGrouped] = useState(false);
   const [edit, setEdit] = useState(null);        // {id, field}
   const [editVal, setEditVal] = useState("");
 
-  const filters = { year, month, loteamento, corretor, status };
+  const filters = { year, month, loteamento, corretor, status, payStart, payEnd };
   const reportQ = useQuery({
     queryKey: ["comm-report", filters],
     queryFn: async () => {
@@ -47,6 +49,8 @@ export default function CommissionsReport({ canEdit }) {
       if (loteamento) params.set("loteamento", loteamento);
       if (corretor) params.set("corretor", corretor);
       if (status) params.set("status", status);
+      if (payStart) params.set("pay_start", payStart);
+      if (payEnd) params.set("pay_end", payEnd);
       return (await api.get(`/commissions/report?${params}`)).data;
     },
   });
@@ -87,6 +91,8 @@ export default function CommissionsReport({ canEdit }) {
       if (loteamento) params.set("loteamento", loteamento);
       if (corretor) params.set("corretor", corretor);
       if (status) params.set("status", status);
+      if (payStart) params.set("pay_start", payStart);
+      if (payEnd) params.set("pay_end", payEnd);
       params.set("columns", cols.join("||"));
       const res = await api.get(`/commissions/report/${type}?${params}`, { responseType: "blob" });
       const url = URL.createObjectURL(res.data);
@@ -158,6 +164,14 @@ export default function CommissionsReport({ canEdit }) {
           <option value="parcial">Parcial</option>
           <option value="pago">Paga</option>
         </select>
+
+        <div className="flex items-center gap-1" data-testid="report-filter-paydate">
+          <span className="text-xs text-muted-foreground">Pgto:</span>
+          <input type="date" value={payStart} onChange={(e) => setPayStart(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm" data-testid="report-filter-pay-start" title="Data de pagamento (de)" />
+          <span className="text-xs text-muted-foreground">até</span>
+          <input type="date" value={payEnd} onChange={(e) => setPayEnd(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm" data-testid="report-filter-pay-end" title="Data de pagamento (até)" />
+          {(payStart || payEnd) && <button onClick={() => { setPayStart(""); setPayEnd(""); }} className="text-xs text-muted-foreground underline" data-testid="report-filter-pay-clear">limpar</button>}
+        </div>
 
         <Button type="button" variant={grouped ? "default" : "outline"} size="sm" className="h-9 gap-1.5" onClick={() => setGrouped((g) => !g)} data-testid="report-group-toggle">
           <Layers className="h-4 w-4" /> Agrupar

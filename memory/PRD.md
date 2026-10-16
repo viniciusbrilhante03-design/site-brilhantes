@@ -431,6 +431,12 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
 - **Abas visíveis por corretor**: `visible_tabs` no doc do loteamento (default todas). PATCH `/loteamentos/{id}/meta` aceita `visible_tabs`; exposto em list/details. Gestor define via popover "Abas visíveis p/ corretor" (lot-visibility-btn) no LoteamentoDetailsDialog; o CorretorLoteamentoView só mostra as abas liberadas (Resumo sempre).
 - Testado: testing_agent — backend 10/10 (+1 skip por design) + frontend 100% (iteration_17.json). **REPUBLICAR** p/ produção. ✅ **Todos os itens P1 do mockup concluídos.**
 
+### Iteração 40 (2026-06 fork) — Data de pagamento no Financeiro ✅
+- **Baixa de parcela**: novo campo **Data de pagamento** (data-testid baixa-date-{n}) ao lado do valor; enviado como `date` (backend já persistia em payments[].date). Default = hoje.
+- **À vista**: toggle (PATCH /sales/{id}/installments/0) agora grava `commission_received_at` (data), corrigindo a baixa à vista e habilitando filtro por data.
+- **Relatório de Comissões**: novo filtro **por data de pagamento** (params `pay_start`/`pay_end`; UI "Pgto: [de] até [até]" report-filter-pay-start/pay-end). Inclui a venda se houver pagamento (parcela ou à vista) no período. Exports PDF/Excel respeitam o filtro.
+- Verificado via curl: filtro hoje→1, 2099→0, revertido. Dados demo preservados.
+
 ### Iteração 34 (2026-06 fork) — Copys por categoria + Base de conhecimento IA + Perguntas sem resposta ✅
 - **Copys por categoria (ARTE 14)**: `copies[]` no doc loteamento. POST/PUT/DELETE `/loteamentos/{id}/copies` + POST
   `/loteamentos/{id}/copies/generate` {category, channel} (IA gera por categoria usando specs+galeria+conhecimento).
