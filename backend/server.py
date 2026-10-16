@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Form, Header, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Form, Header, Query, BackgroundTasks
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -569,6 +569,67 @@ async def list_sales(month: Optional[int] = None, year: Optional[int] = None,
     return results
 
 
+# ---------------- Object storage (vídeos e documentos de loteamento) ----------------
+_STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+_STORAGE_URL = _STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+_EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+_APP_NS = "brilhantes"
+_storage_key = None
+
+
+def _init_storage(force: bool = False):
+    global _storage_key
+    if _storage_key and not force:
+        return _storage_key
+    resp = requests.post(f"{_STORAGE_URL}/init", json={"emergent_key": _EMERGENT_KEY}, timeout=30)
+    resp.raise_for_status()
+    _storage_key = resp.json()["storage_key"]
+    return _storage_key
+
+
+def _put_object(path: str, data: bytes, content_type: str) -> dict:
+    try:
+        key = _init_storage()
+        r = requests.put(f"{_STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=180)
+        if r.status_code == 404:
+            key = _init_storage(force=True)
+            r = requests.put(f"{_STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=180)
+        r.raise_for_status()
+        return r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"storage put failed: {type(e).__name__}: {str(e)[:150]}")
+        raise HTTPException(status_code=502, detail="Falha ao enviar o arquivo ao armazenamento.")
+
+
+def _get_object(path: str):
+    key = _init_storage()
+    r = requests.get(f"{_STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=120)
+    if r.status_code == 404:
+        key = _init_storage(force=True)
+        r = requests.get(f"{_STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=120)
+    r.raise_for_status()
+    return r.content, r.headers.get("Content-Type", "application/octet-stream")
+
+
+def _parse_latlng(text):
+    if not text:
+        return None, None
+    s = str(text)
+    for pat in (r"@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)",
+                r"!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)",
+                r"[?&]q=(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)",
+                r"(-?\d{1,2}\.\d{3,}),\s*(-?\d{1,3}\.\d{3,})"):
+        m = re.search(pat, s)
+        if m:
+            try:
+                return float(m.group(1)), float(m.group(2))
+            except Exception:
+                continue
+    return None, None
+
+
 # ---------------- Loteamentos ----------------
 async def _ensure_loteamento(name: str):
     name = (name or "").strip()
@@ -607,8 +668,19 @@ async def list_loteamentos(user: dict = Depends(get_current_user)):
         d.setdefault("phase", "em_vendas")
         d["cidade"] = ((d.get("specs") or {}).get("localizacao") or {}).get("cidade") or ""
         d["cover"] = cover.get(d.get("id"))
+        d["lat"] = d.get("lat")
+        d["lng"] = d.get("lng")
     docs.sort(key=lambda d: (d.get("order", 9999), (d.get("name") or "").lower()))
     return docs
+
+
+@api_router.post("/loteamentos/reorder")
+async def reorder_loteamentos(request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    ids = body.get("ids") or []
+    for i, lid in enumerate(ids):
+        await db.loteamentos.update_one({"id": lid}, {"$set": {"order": i}})
+    return {"ok": True}
 
 
 @api_router.post("/loteamentos")
@@ -836,6 +908,12 @@ async def update_loteamento_details(lot_id: str, data: LoteamentoDetails, user: 
            "ai_training": (data.ai_training or "").strip(),
            "specs": data.specs or {},
            "details_updated_at": datetime.now(timezone.utc).isoformat()}
+    loc = (data.specs or {}).get("localizacao") or {}
+    lat, lng = _parse_latlng(loc.get("coords"))
+    if lat is None:
+        lat, lng = _parse_latlng(loc.get("maps"))
+    upd["lat"] = lat
+    upd["lng"] = lng
     await db.loteamentos.update_one({"id": lot_id}, {"$set": upd})
     return {**existing, **upd}
 
@@ -1011,6 +1089,115 @@ async def delete_lot_image(img_id: str, user: dict = Depends(require_master)):
     res = await db.lot_images.delete_one({"id": img_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Imagem não encontrada")
+    return {"ok": True}
+
+
+# ---------------- Vídeos do loteamento (links YouTube/URL + upload de arquivo) ----------------
+_YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?v=|embed/|shorts/|v/))([\w-]{6,})")
+
+
+def _video_meta(d: dict) -> dict:
+    return {k: d.get(k, "") for k in ("id", "lot_id", "title", "kind", "url", "youtube_id", "content_type", "filename", "created_at")}
+
+
+@api_router.get("/loteamentos/{lot_id}/videos")
+async def list_lot_videos(lot_id: str, user: dict = Depends(get_current_user)):
+    docs = await db.lot_videos.find({"lot_id": lot_id, "is_deleted": {"$ne": True}}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return [_video_meta(d) for d in docs]
+
+
+@api_router.post("/loteamentos/{lot_id}/videos/link")
+async def add_lot_video_link(lot_id: str, request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    url = (body.get("url") or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Informe a URL do vídeo")
+    m = _YT_RE.search(url)
+    doc = {"id": f"vid_{uuid.uuid4().hex[:10]}", "lot_id": lot_id, "title": (body.get("title") or "").strip(),
+           "kind": "youtube" if m else "url", "url": url, "youtube_id": m.group(1) if m else "",
+           "content_type": "", "filename": "", "created_at": datetime.now(timezone.utc).isoformat(), "is_deleted": False}
+    await db.lot_videos.insert_one(doc)
+    return _video_meta(doc)
+
+
+@api_router.post("/loteamentos/{lot_id}/videos/upload")
+async def upload_lot_video(lot_id: str, file: UploadFile = File(...), title: str = Form(""), user: dict = Depends(require_master)):
+    content = await file.read()
+    if len(content) > 200 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Vídeo muito grande (máx. 200 MB).")
+    ext = (file.filename or "video.mp4").rsplit(".", 1)[-1].lower()
+    path = f"{_APP_NS}/videos/{lot_id}/{uuid.uuid4().hex}.{ext}"
+    res = _put_object(path, content, file.content_type or "video/mp4")
+    doc = {"id": f"vid_{uuid.uuid4().hex[:10]}", "lot_id": lot_id, "title": (title or file.filename or "").strip(),
+           "kind": "file", "url": "", "youtube_id": "", "storage_path": res["path"],
+           "content_type": file.content_type or "video/mp4", "filename": file.filename or "video",
+           "created_at": datetime.now(timezone.utc).isoformat(), "is_deleted": False}
+    await db.lot_videos.insert_one(doc)
+    return _video_meta(doc)
+
+
+@api_router.get("/loteamentos/videos/{vid}/raw")
+async def stream_lot_video(vid: str, user: dict = Depends(get_current_user)):
+    d = await db.lot_videos.find_one({"id": vid, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not d or not d.get("storage_path"):
+        raise HTTPException(status_code=404, detail="Vídeo não encontrado")
+    data, ct = _get_object(d["storage_path"])
+    return Response(content=data, media_type=d.get("content_type") or ct)
+
+
+@api_router.delete("/loteamentos/videos/{vid}")
+async def delete_lot_video(vid: str, user: dict = Depends(require_master)):
+    await db.lot_videos.update_one({"id": vid}, {"$set": {"is_deleted": True}})
+    return {"ok": True}
+
+
+# ---------------- Documentos do loteamento (PDF / tabela de preço p/ corretor baixar) ----------------
+_DOC_CATS = {"documento", "tabela_preco"}
+
+
+def _doc_meta(d: dict) -> dict:
+    return {k: d.get(k, "") for k in ("id", "lot_id", "title", "category", "content_type", "filename", "size", "created_at")}
+
+
+@api_router.get("/loteamentos/{lot_id}/docs")
+async def list_lot_docs(lot_id: str, user: dict = Depends(get_current_user)):
+    docs = await db.lot_docs.find({"lot_id": lot_id, "is_deleted": {"$ne": True}}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return [_doc_meta(d) for d in docs]
+
+
+@api_router.post("/loteamentos/{lot_id}/docs")
+async def upload_lot_doc(lot_id: str, file: UploadFile = File(...), title: str = Form(""),
+                         category: str = Form("documento"), user: dict = Depends(require_master)):
+    content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Arquivo muito grande (máx. 50 MB).")
+    ext = (file.filename or "arquivo.pdf").rsplit(".", 1)[-1].lower()
+    path = f"{_APP_NS}/docs/{lot_id}/{uuid.uuid4().hex}.{ext}"
+    res = _put_object(path, content, file.content_type or "application/pdf")
+    doc = {"id": f"doc_{uuid.uuid4().hex[:10]}", "lot_id": lot_id,
+           "title": (title or file.filename or "Documento").strip(),
+           "category": category if category in _DOC_CATS else "documento",
+           "storage_path": res["path"], "content_type": file.content_type or "application/pdf",
+           "filename": file.filename or "arquivo.pdf", "size": res.get("size") or len(content),
+           "created_at": datetime.now(timezone.utc).isoformat(), "is_deleted": False}
+    await db.lot_docs.insert_one(doc)
+    return _doc_meta(doc)
+
+
+@api_router.get("/loteamentos/docs/{doc_id}/download")
+async def download_lot_doc(doc_id: str, user: dict = Depends(get_current_user)):
+    d = await db.lot_docs.find_one({"id": doc_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    data, ct = _get_object(d["storage_path"])
+    fn = d.get("filename") or "arquivo"
+    return Response(content=data, media_type=d.get("content_type") or ct,
+                    headers={"Content-Disposition": f'attachment; filename="{fn}"'})
+
+
+@api_router.delete("/loteamentos/docs/{doc_id}")
+async def delete_lot_doc(doc_id: str, user: dict = Depends(require_master)):
+    await db.lot_docs.update_one({"id": doc_id}, {"$set": {"is_deleted": True}})
     return {"ok": True}
 
 
@@ -1708,6 +1895,50 @@ async def transfer_sale(sale_id: str, request: Request, user: dict = Depends(req
                       f"Uma venda foi transferida para você: {sale.get('property_name')}.",
                       {"sale_id": sale_id})
     return {**sale, **upd}
+
+
+@api_router.post("/sales/bulk-delete")
+async def bulk_delete_sales(request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    ids = body.get("ids") or []
+    n = 0
+    for sid in ids:
+        sale = await db.sales.find_one({"id": sid}, {"_id": 0})
+        if not sale:
+            continue
+        sale["deleted_at"] = datetime.now(timezone.utc).isoformat()
+        sale["deleted_by"] = user["user_id"]
+        sale["deleted_by_name"] = _display(user)
+        await db.sales_history.insert_one(sale)
+        await db.sales.delete_one({"id": sid})
+        await _audit("delete", sale, user, detail="Exclusão em lote")
+        n += 1
+    return {"ok": True, "deleted": n}
+
+
+@api_router.post("/sales/bulk-transfer")
+async def bulk_transfer_sales(request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    ids = body.get("ids") or []
+    new_name = (body.get("broker_name") or "").strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="Informe o corretor de destino")
+    corr = await _resolve_corretor_by_name(new_name)
+    oid = corr["user_id"] if corr else None
+    n = 0
+    for sid in ids:
+        sale = await db.sales.find_one({"id": sid}, {"_id": 0})
+        if not sale:
+            continue
+        upd = {"brokers": [{"name": new_name, "split_pct": 100.0, "owner_id": oid}],
+               "broker_name": new_name, "owner_id": oid or user["user_id"],
+               "owner_name": new_name, "broker_ids": [oid] if oid else []}
+        await db.sales.update_one({"id": sid}, {"$set": upd})
+        await _audit("transfer", {**sale, **upd}, user, detail=f"De {sale.get('broker_name')} para {new_name} (em lote)")
+        n += 1
+    if oid and n:
+        await _notify(oid, "new_sale", f"{n} venda(s) foram transferidas para você.", {})
+    return {"ok": True, "transferred": n}
 
 
 @api_router.get("/audit")

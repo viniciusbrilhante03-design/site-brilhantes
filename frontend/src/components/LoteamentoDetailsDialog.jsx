@@ -13,6 +13,9 @@ import LoteamentoSpecsForm, { mergeSpecs, EMPTY_SPECS } from "@/components/Lotea
 import LoteamentoGallery from "@/components/LoteamentoGallery";
 import LoteamentoCopys from "@/components/LoteamentoCopys";
 import LoteamentoKnowledge from "@/components/LoteamentoKnowledge";
+import LoteamentoVideos from "@/components/LoteamentoVideos";
+import LoteamentoDocs from "@/components/LoteamentoDocs";
+import LoteamentoMap from "@/components/LoteamentoMap";
 
 function fmtUpdated(iso) {
   if (!iso) return null;
@@ -112,9 +115,12 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
         </DialogHeader>
 
         <Tabs defaultValue="dados">
-          <TabsList>
+          <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="dados" data-testid="lot-tab-dados">Informações</TabsTrigger>
             <TabsTrigger value="galeria" data-testid="lot-tab-galeria">Galeria</TabsTrigger>
+            <TabsTrigger value="videos" data-testid="lot-tab-videos">Vídeos</TabsTrigger>
+            <TabsTrigger value="mapa" data-testid="lot-tab-mapa">Mapa</TabsTrigger>
+            <TabsTrigger value="docs" data-testid="lot-tab-docs">Documentos</TabsTrigger>
             <TabsTrigger value="copys" data-testid="lot-tab-copys">Copys</TabsTrigger>
             <TabsTrigger value="base" data-testid="lot-tab-base">Base IA</TabsTrigger>
             <TabsTrigger value="ia" data-testid="lot-tab-ia"><Sparkles className="h-4 w-4 mr-1" /> IA Especialista</TabsTrigger>
@@ -159,6 +165,18 @@ export default function LoteamentoDetailsDialog({ lot, onOpenChange }) {
 
           <TabsContent value="galeria" className="mt-3">
             <LoteamentoGallery lotId={lot?.id} />
+          </TabsContent>
+
+          <TabsContent value="videos" className="mt-3">
+            {lot?.id && <LoteamentoVideos lotId={lot.id} />}
+          </TabsContent>
+
+          <TabsContent value="mapa" className="mt-3">
+            <LoteamentoMap lot={lot} />
+          </TabsContent>
+
+          <TabsContent value="docs" className="mt-3">
+            {lot?.id && <LoteamentoDocs lotId={lot.id} canManage />}
           </TabsContent>
 
           <TabsContent value="copys" className="mt-3">

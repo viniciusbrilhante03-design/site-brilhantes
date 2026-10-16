@@ -18,7 +18,7 @@ export const EMPTY_SPECS = {
   tecnicos: { metragem_min: "", metragem_max: "", area_total: "", qtd_lotes: "", qtd_quadras: "", tipo: "", liberacao_pct: "", prazo_construcao: "", restricoes: "" },
   infraestrutura: { items: [], outro: "" },
   obra: { status: "", percentual: "", previsao: "", data_entrega: "", observacao: "" },
-  localizacao: { cidade: "", estado: "", bairro: "", endereco: "", maps: "", dist_centro: "", dist_praia: "", dist_pontos: "", acessos: "" },
+  localizacao: { cidade: "", estado: "", bairro: "", endereco: "", maps: "", coords: "", dist_centro: "", dist_praia: "", dist_pontos: "", acessos: "" },
   comercial: { valor_a_partir: "", valor_ref: "", entrada_minima: "", max_parcelas: "", valor_parcela_inicial: "", financiamento: "Próprio do loteamento", correcao: "", correcao_outro: "", periodicidade: "", periodicidade_outra: "", juros: "", juros_pct: "", juros_tipo: "", balao: "", baloes_qtd: "", baloes_periodicidade: "", baloes_valor: "", baloes_vencimentos: "", condicoes_especiais: "", diferenciais: "" },
 };
 
@@ -138,6 +138,7 @@ export default function LoteamentoSpecsForm({ value, onChange }) {
           </div>
           <F label="Endereço/referência"><Input className="h-8" value={loc.endereco} onChange={(e) => up("localizacao", "endereco", e.target.value)} /></F>
           <F label="Link do Google Maps"><Input className="h-8" value={loc.maps} onChange={(e) => up("localizacao", "maps", e.target.value)} placeholder="https://maps.google.com/..." /></F>
+          <F label="Coordenadas (lat, long) — p/ aparecer no mapa"><Input data-testid="spec-coords" className="h-8" value={loc.coords} onChange={(e) => up("localizacao", "coords", e.target.value)} placeholder="Ex: -27.5954, -48.5480" /></F>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <F label="Distância do centro"><Input className="h-8" value={loc.dist_centro} onChange={(e) => up("localizacao", "dist_centro", e.target.value)} placeholder="Ex: 5 km" /></F>
             <F label="Distância da praia"><Input className="h-8" value={loc.dist_praia} onChange={(e) => up("localizacao", "dist_praia", e.target.value)} /></F>

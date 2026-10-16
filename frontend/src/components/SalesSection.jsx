@@ -4,12 +4,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -25,10 +29,13 @@ function statusOf(s) {
   return (s.installments || []).some((i) => !i.received) ? "receber" : "quitado";
 }
 
-export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicate, onDelete, onTransfer, onCancel, onOpenInstallments, onImport, onOpenExport, onOpenAttachments }) {
+export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicate, onDelete, onTransfer, onCancel, onOpenInstallments, onImport, onOpenExport, onOpenAttachments, bulkEnabled = false, brokers = [], onBulkDelete, onBulkTransfer }) {
   const [q, setQ] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [f, setF] = useState(emptyFilters);
+  const [selected, setSelected] = useState(new Set());
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [bulkBroker, setBulkBroker] = useState("");
   const setFilter = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
   const loteamentos = useMemo(() => [...new Set((sales || []).map((s) => s.property_name).filter(Boolean))].sort(), [sales]);
@@ -76,6 +83,18 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
     });
   }, [sales, q, f]);
 
+  const allSelected = filtered.length > 0 && filtered.every((s) => selected.has(s.id));
+  const toggleOne = (id) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => setSelected((p) => {
+    if (filtered.every((s) => p.has(s.id))) return new Set();
+    return new Set(filtered.map((s) => s.id));
+  });
+  const clearSel = () => setSelected(new Set());
+  const selIds = [...selected];
+  const colSpan = bulkEnabled ? 9 : 8;
+
+  const doBulkDelete = () => { onBulkDelete?.(selIds); clearSel(); };
+  const doBulkTransfer = () => { if (!bulkBroker) return; onBulkTransfer?.(selIds, bulkBroker); setTransferOpen(false); setBulkBroker(""); clearSel(); };
   return (
     <Card className="rounded-xl border-border/60 overflow-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-5 border-b border-border/60">
@@ -174,10 +193,36 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
         </div>
       )}
 
+      {bulkEnabled && selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border/60 bg-primary/5" data-testid="sales-bulk-bar">
+          <span className="text-sm font-semibold" data-testid="sales-bulk-count">{selected.size} selecionada(s)</span>
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 ml-auto" data-testid="sales-bulk-transfer" onClick={() => setTransferOpen(true)}>
+            <ArrowRightLeft className="h-4 w-4" /> Transferir
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm" className="h-8 gap-1.5" data-testid="sales-bulk-delete"><Trash2 className="h-4 w-4" /> Excluir</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir {selected.size} venda(s)?</AlertDialogTitle>
+                <AlertDialogDescription>Esta ação não pode ser desfeita. As vendas selecionadas serão removidas.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="sales-bulk-delete-confirm" onClick={doBulkDelete}>Excluir</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <Button variant="ghost" size="sm" className="h-8" data-testid="sales-bulk-clear" onClick={clearSel}><X className="h-4 w-4" /></Button>
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
+              {bulkEnabled && <TableHead className="w-10"><Checkbox checked={allSelected} onCheckedChange={toggleAll} data-testid="sales-select-all" /></TableHead>}
               <TableHead>Data</TableHead>
               <TableHead>Loteamento</TableHead>
               <TableHead>Corretor</TableHead>
@@ -190,9 +235,9 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={colSpan} className="text-center py-10 text-muted-foreground">Carregando...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+              <TableRow><TableCell colSpan={colSpan} className="text-center py-12 text-muted-foreground">
                 {activeCount || q ? "Nenhuma venda corresponde aos filtros." : 'Nenhuma venda encontrada. Clique em "Nova venda" ou "Importar" para começar.'}
               </TableCell></TableRow>
             ) : (
@@ -202,6 +247,7 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
                 const ql = [s.quadra && `Qd ${s.quadra}`, s.lote && `Lt ${s.lote}`].filter(Boolean).join(" · ");
                 return (
                   <TableRow key={s.id} data-testid={`sale-row-${s.id}`} className="group">
+                    {bulkEnabled && <TableCell><Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleOne(s.id)} data-testid={`sale-select-${s.id}`} /></TableCell>}
                     <TableCell className="tabular text-sm whitespace-nowrap">{formatDateBR(s.sale_date)}</TableCell>
                     <TableCell className="font-medium max-w-[220px]">
                       <div className="truncate">{s.property_name}</div>
@@ -296,6 +342,25 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogContent data-testid="sales-bulk-transfer-dialog">
+          <DialogHeader>
+            <DialogTitle>Transferir {selected.size} venda(s)</DialogTitle>
+            <DialogDescription>Selecione o corretor de destino. Todas as vendas selecionadas passarão para ele.</DialogDescription>
+          </DialogHeader>
+          <Select value={bulkBroker} onValueChange={setBulkBroker}>
+            <SelectTrigger data-testid="sales-bulk-transfer-select"><SelectValue placeholder="Corretor de destino" /></SelectTrigger>
+            <SelectContent>
+              {brokers.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferOpen(false)}>Cancelar</Button>
+            <Button disabled={!bulkBroker} data-testid="sales-bulk-transfer-confirm" onClick={doBulkTransfer}>Transferir</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

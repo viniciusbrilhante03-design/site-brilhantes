@@ -10,8 +10,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Building2, Plus, Trash2, Search, MapPin, ImageIcon } from "lucide-react";
+import { Building2, Plus, Trash2, Search, MapPin, ImageIcon, MapPinned, ChevronUp, ChevronDown } from "lucide-react";
 import LoteamentoDetailsDialog from "@/components/LoteamentoDetailsDialog";
+import GeneralMapDialog from "@/components/GeneralMapDialog";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 const PHASES = { em_vendas: "Em vendas", lancamento: "Lançamento", entregue: "Entregue" };
@@ -28,6 +29,7 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
   const [filter, setFilter] = useState("all");
   const [newName, setNewName] = useState("");
   const [detail, setDetail] = useState(null);
+  const [mapOpen, setMapOpen] = useState(false);
 
   const lotQ = useQuery({
     queryKey: ["loteamentos"],
@@ -49,6 +51,20 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
     mutationFn: ({ id, phase }) => api.patch(`/loteamentos/${id}/meta`, { phase }),
     onSuccess: invalidate,
   });
+  const reorderMut = useMutation({
+    mutationFn: (ids) => api.post("/loteamentos/reorder", { ids }),
+    onSuccess: invalidate,
+  });
+
+  const move = (id, dir) => {
+    const all = [...(lotQ.data || [])];
+    const i = all.findIndex((l) => l.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= all.length) return;
+    [all[i], all[j]] = [all[j], all[i]];
+    reorderMut.mutate(all.map((l) => l.id));
+  };
+  const canReorder = filter === "all" && !q.trim();
 
   const list = useMemo(() => {
     let all = lotQ.data || [];
@@ -66,7 +82,7 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
             <DialogTitle className="font-heading text-xl flex items-center gap-2">
               <Building2 className="h-5 w-5 text-[hsl(var(--gold))]" /> Loteamentos
             </DialogTitle>
-            <DialogDescription>Cadastre loteamentos e gerencie dados técnicos, galeria, IA e copys.</DialogDescription>
+            <DialogDescription>Cadastre loteamentos e gerencie dados técnicos, galeria, vídeos, mapa, documentos, IA e copys.</DialogDescription>
           </DialogHeader>
 
           <div className="flex gap-2">
@@ -74,6 +90,9 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
               placeholder="Nome do novo loteamento" onKeyDown={(e) => { if (e.key === "Enter" && newName.trim()) addMut.mutate(newName.trim()); }} />
             <Button data-testid="lot-add-btn" disabled={!newName.trim() || addMut.isPending} onClick={() => addMut.mutate(newName.trim())}>
               <Plus className="h-4 w-4 mr-1" /> Adicionar
+            </Button>
+            <Button data-testid="lot-open-map" variant="outline" className="gap-1.5 shrink-0" onClick={() => setMapOpen(true)}>
+              <MapPinned className="h-4 w-4" /> <span className="hidden sm:inline">Mapa geral</span>
             </Button>
           </div>
 
@@ -113,6 +132,12 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
                     <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${PHASE_STYLE[l.phase || "em_vendas"]}`}>
                       {PHASES[l.phase || "em_vendas"]}
                     </span>
+                    {canReorder && (
+                      <div className="absolute top-2 right-2 flex flex-col gap-1">
+                        <Button variant="secondary" size="icon" className="h-6 w-6 bg-background/80" data-testid={`lot-move-up-${l.id}`} onClick={() => move(l.id, -1)}><ChevronUp className="h-3.5 w-3.5" /></Button>
+                        <Button variant="secondary" size="icon" className="h-6 w-6 bg-background/80" data-testid={`lot-move-down-${l.id}`} onClick={() => move(l.id, 1)}><ChevronDown className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    )}
                   </div>
                   <div className="p-3 flex-1 flex flex-col gap-2">
                     <div>
@@ -153,6 +178,7 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
         </DialogContent>
       </Dialog>
       <LoteamentoDetailsDialog lot={detail} onOpenChange={(v) => { if (!v) setDetail(null); }} />
+      <GeneralMapDialog open={mapOpen} onOpenChange={setMapOpen} onSelectLot={(l) => setDetail(l)} />
     </>
   );
 }

@@ -174,6 +174,17 @@ export default function Dashboard() {
     onError: () => toast.error("Erro ao transferir venda."),
   });
 
+  const bulkDeleteMut = useMutation({
+    mutationFn: (ids) => api.post("/sales/bulk-delete", { ids }),
+    onSuccess: (res) => { invalidateAll(); toast.success(`${res.data.deleted} venda(s) excluída(s).`); },
+    onError: () => toast.error("Erro ao excluir em lote."),
+  });
+  const bulkTransferMut = useMutation({
+    mutationFn: ({ ids, broker_name }) => api.post("/sales/bulk-transfer", { ids, broker_name }),
+    onSuccess: (res) => { invalidateAll(); toast.success(`${res.data.transferred} venda(s) transferida(s).`); },
+    onError: () => toast.error("Erro ao transferir em lote."),
+  });
+
   const toggleMut = useMutation({
     mutationFn: ({ saleId, number }) => api.patch(`/sales/${saleId}/installments/${number}`),
     onSuccess: (res) => {
@@ -344,6 +355,10 @@ export default function Dashboard() {
           onImport={() => setImportOpen(true)}
           onOpenExport={() => setExportOpen(true)}
           onOpenAttachments={(s) => setAttachSale(s)}
+          bulkEnabled
+          brokers={brokers}
+          onBulkDelete={(ids) => bulkDeleteMut.mutate(ids)}
+          onBulkTransfer={(ids, broker_name) => bulkTransferMut.mutate({ ids, broker_name })}
         />
       </main>
 
