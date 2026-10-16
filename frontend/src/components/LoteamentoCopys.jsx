@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Wand2, Plus, Trash2, Copy, Loader2 } from "lucide-react";
+import { Wand2, Plus, Trash2, Copy, Loader2, ImagePlus } from "lucide-react";
+import LoteamentoArte from "@/components/LoteamentoArte";
 
 const CATEGORIES = ["Localização", "Valores", "Infraestrutura", "Geral"];
 const CHANNELS = [["whatsapp", "WhatsApp"], ["feed", "Feed"], ["stories", "Stories"]];
 
 export default function LoteamentoCopys({ lotId, readOnly = false }) {
+  const [arteOpen, setArteOpen] = useState(false);
   const qc = useQueryClient();
   const [category, setCategory] = useState("Geral");
   const [channel, setChannel] = useState("whatsapp");
@@ -46,6 +48,10 @@ export default function LoteamentoCopys({ lotId, readOnly = false }) {
 
   return (
     <div className="space-y-4" data-testid="lot-copys">
+      <Button variant="outline" size="sm" className="gap-1.5 w-full" onClick={() => setArteOpen(true)} data-testid="copy-generate-image">
+        <ImagePlus className="h-4 w-4 text-[hsl(var(--gold))]" /> Gerar imagem de divulgação
+      </Button>
+      <LoteamentoArte open={arteOpen} onOpenChange={setArteOpen} lotId={lotId} />
       {!readOnly && (
         <div className="rounded-xl border border-border/60 p-3 space-y-2">
           <div className="flex gap-2">

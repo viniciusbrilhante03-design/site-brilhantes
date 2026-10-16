@@ -437,6 +437,22 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
 - **Relatório de Comissões**: novo filtro **por data de pagamento** (params `pay_start`/`pay_end`; UI "Pgto: [de] até [até]" report-filter-pay-start/pay-end). Inclui a venda se houver pagamento (parcela ou à vista) no período. Exports PDF/Excel respeitam o filtro.
 - Verificado via curl: filtro hoje→1, 2099→0, revertido. Dados demo preservados.
 
+### Iteração 41 (2026-06 fork) — Loteamentos (filtro+DnD), Clientes, Financeiro (busca+motivo), Arte ✅
+- 🏘️ **Loteamentos — ordem**: arrastar e soltar os cards (gestor) além das setas ↑/↓; ordem salva (POST /loteamentos/reorder) e refletida p/ corretores. Novos entram no fim.
+- 🏘️ **Loteamentos — filtro**: agora só **Todos / Aberto / Fechado** (por `specs.tecnicos.tipo`, exposto em /loteamentos como `tipo`); removidos Em vendas/Lançamentos/Entregues do filtro. Badge do card passou a mostrar Aberto/Fechado. Vale p/ gestor e corretor.
+- 👤 **Clientes**: botão **"Incluir novo cliente"** (btn-add-client) abre form inline (nome/telefone/email/CPF/nascimento) → POST /clients com checagem de duplicidade (409 → confirma e força). Reaproveita o cadastro existente.
+- 💰 **Financeiro — busca**: campo de busca no Relatório (param `q`) por Cliente/CPF/Loteamento/Quadra/Lote/Corretor (gestor e corretor, conforme escopo).
+- 💰 **Financeiro — motivo**: edição inline de %/desconto agora pede **Motivo**, gravado na auditoria (valor anterior→novo · usuário · data/hora · motivo).
+- 📢 **Copys — Gerar imagem de divulgação**: botão (copy-generate-image) abre composer em Canvas (LoteamentoArte.jsx) com foto (upload ou da galeria) + nome/valor/condições/localização/infra + identidade Brilhante's; pré-visualiza e **baixa** a arte.
+- Verificado via curl + screenshots. Dados demo preservados.
+- ⏳ PENDENTE (único item restante do pacote): **IA + arquivos** — gestor envia Book/tabela/PDF e a IA sugere o preenchimento dos campos (Confirmar/Editar/Ignorar). pdfplumber já disponível no backend.
+
+### Iteração 42 (2026-06 fork) — IA + Arquivos (auto-sugestão de campos) ✅ — pacote P1 100% concluído
+- Backend: POST `/loteamentos/{id}/ai-extract` (master, multipart): extrai texto de **PDF (pdfplumber)** / .txt / .csv → OpenAI (JSON) sugere `comercial{valor_a_partir(menor preço),entrada_minima,max_parcelas}`, `localizacao{cidade,estado,bairro}`, `tecnicos{metragem_min,max,tipo}` + `resumo`. PATCH `/loteamentos/{id}/specs-merge` faz deep-merge dos campos confirmados em specs + anexa resumo ao treino da IA + recomputa lat/lng.
+- Frontend (aba Base IA / LoteamentoKnowledge): botão "Enviar arquivo" → lista de sugestões com **Confirmar/Editar (inline)/Ignorar** por campo → "Aplicar selecionados".
+- Verificado via curl: extração de tabela de preços retornou valor a partir = menor preço, localização, tipo e resumo corretos; specs-merge no-op OK.
+- ✅ **Todo o pacote de P1 (Loteamentos, IA, Clientes, Financeiro) concluído.** REPUBLICAR p/ produção.
+
 ### Iteração 34 (2026-06 fork) — Copys por categoria + Base de conhecimento IA + Perguntas sem resposta ✅
 - **Copys por categoria (ARTE 14)**: `copies[]` no doc loteamento. POST/PUT/DELETE `/loteamentos/{id}/copies` + POST
   `/loteamentos/{id}/copies/generate` {category, channel} (IA gera por categoria usando specs+galeria+conhecimento).

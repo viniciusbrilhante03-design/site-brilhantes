@@ -671,6 +671,7 @@ async def list_loteamentos(user: dict = Depends(get_current_user)):
         d["lat"] = d.get("lat")
         d["lng"] = d.get("lng")
         d["visible_tabs"] = d.get("visible_tabs")
+        d["tipo"] = ((d.get("specs") or {}).get("tecnicos") or {}).get("tipo") or ""
     docs.sort(key=lambda d: (d.get("order", 9999), (d.get("name") or "").lower()))
     return docs
 
@@ -1295,6 +1296,76 @@ async def delete_lot_doc(doc_id: str, user: dict = Depends(require_master)):
     return {"ok": True}
 
 
+@api_router.post("/loteamentos/{lot_id}/ai-extract")
+async def ai_extract_fields(lot_id: str, file: UploadFile = File(...), user: dict = Depends(require_master)):
+    key = await _ai_key()
+    if not key:
+        raise HTTPException(status_code=400, detail="IA não configurada.")
+    await _check_ai_limit()
+    content = await file.read()
+    name = (file.filename or "").lower()
+    text = ""
+    if name.endswith(".pdf"):
+        try:
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(content)) as pdf:
+                text = "\n".join((p.extract_text() or "") for p in pdf.pages[:15])
+        except Exception as e:
+            logger.error(f"pdf extract failed: {e}")
+    else:
+        try:
+            text = content.decode("utf-8", "ignore")
+        except Exception:
+            text = ""
+    text = (text or "").strip()[:12000]
+    if not text:
+        raise HTTPException(status_code=400, detail="Não consegui ler texto do arquivo. Envie um PDF com texto ou um .txt/.csv.")
+    system = ("Extraia dados de um loteamento a partir do texto. Responda SOMENTE um JSON com as chaves: "
+              "comercial{valor_a_partir,entrada_minima,max_parcelas}, localizacao{cidade,estado,bairro}, "
+              "tecnicos{metragem_min,metragem_max,tipo}, resumo. "
+              "Em valor_a_partir use o MENOR preço encontrado (formato '85.000'). tipo deve ser 'aberto' ou 'fechado'. "
+              "resumo: 1-2 frases úteis para treinar a IA. Deixe '' no que não encontrar. NUNCA invente.")
+    try:
+        comp = await _get_openai(key).chat.completions.create(
+            model=await _ai_model(),
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": text}],
+            temperature=0, response_format={"type": "json_object"})
+        await _record_ai_usage(comp)
+        import json as _json
+        data = _json.loads(comp.choices[0].message.content or "{}")
+    except Exception as e:
+        logger.error(f"ai-extract failed: {e}")
+        raise HTTPException(status_code=502, detail="Falha ao interpretar o arquivo com a IA.")
+    return {"suggestions": data, "excerpt": text[:400]}
+
+
+@api_router.patch("/loteamentos/{lot_id}/specs-merge")
+async def merge_specs(lot_id: str, request: Request, user: dict = Depends(require_master)):
+    doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Loteamento não encontrado")
+    body = await request.json()
+    specs = doc.get("specs") or {}
+    for section, vals in (body.get("specs_partial") or {}).items():
+        if isinstance(vals, dict):
+            specs.setdefault(section, {})
+            for k, v in vals.items():
+                if v not in (None, ""):
+                    specs[section][k] = v
+    upd = {"specs": specs}
+    at = (body.get("append_training") or "").strip()
+    if at:
+        upd["ai_training"] = ((doc.get("ai_training") or "") + "\n" + at).strip()
+    loc = specs.get("localizacao") or {}
+    lat, lng = _parse_latlng(loc.get("coords"))
+    if lat is None:
+        lat, lng = _parse_latlng(loc.get("maps"))
+    upd["lat"] = lat
+    upd["lng"] = lng
+    await db.loteamentos.update_one({"id": lot_id}, {"$set": upd})
+    return {"ok": True}
+
+
 # ---------------- Copys por categoria + Base de conhecimento IA + Perguntas ----------------
 class CopyItem(BaseModel):
     category: str = "Geral"
@@ -1855,6 +1926,7 @@ async def edit_commission(sale_id: str, request: Request, user: dict = Depends(r
     if not sale:
         raise HTTPException(status_code=404, detail="Venda não encontrada")
     body = await request.json()
+    motivo = (body.get("motivo") or "").strip()
     old_rate = sale.get("commission_rate") or 0
     old_disc = sum((d.get("value") or 0) for d in (sale.get("discounts") or [])
                    if (d.get("type") or "") in ("nf", "boleto", "nf_boleto"))
@@ -1879,7 +1951,8 @@ async def edit_commission(sale_id: str, request: Request, user: dict = Depends(r
     }
     await db.sales.update_one({"id": sale_id}, {"$set": upd})
     await _audit("commission_edit", {**sale, **upd}, user,
-                 detail=f"% {old_rate}→{upd['commission_rate']} · Desc. NF/boleto R$ {old_disc:.2f}→R$ {new_disc:.2f}")
+                 detail=f"% {old_rate}→{upd['commission_rate']} · Desc. NF/boleto R$ {old_disc:.2f}→R$ {new_disc:.2f}"
+                        + (f" · Motivo: {motivo}" if motivo else ""))
     return await db.sales.find_one({"id": sale_id}, {"_id": 0})
 
 
@@ -3697,9 +3770,11 @@ def _sale_pay_in_range(s, start, end):
     return False
 
 
-async def _build_report(user, month, year, start, end, loteamento, corretor, status, pay_start=None, pay_end=None):
+async def _build_report(user, month, year, start, end, loteamento, corretor, status, pay_start=None, pay_end=None, q=None):
     sales = await _report_sales(user, month, year, start, end)
     lot = _norm_name(loteamento) if loteamento else ""
+    qq = (q or "").strip().lower()
+    qdig = _only_digits(q) if q else ""
     rows = []
     for s in sales:
         if lot and _norm_name(s.get("property_name")) != lot:
@@ -3708,6 +3783,11 @@ async def _build_report(user, month, year, start, end, loteamento, corretor, sta
             continue
         if (pay_start or pay_end) and not _sale_pay_in_range(s, pay_start, pay_end):
             continue
+        if qq:
+            hay = " ".join(str(s.get(k) or "") for k in ("client_name", "property_name", "quadra", "lote", "broker_name")).lower()
+            cpfd = _only_digits(s.get("client_cpf"))
+            if qq not in hay and not (qdig and qdig in cpfd):
+                continue
         row = _report_row(s, user)
         if status and row["status_key"] != status:
             continue
@@ -3726,8 +3806,8 @@ async def commissions_report(month: Optional[int] = None, year: Optional[int] = 
                              start: Optional[str] = None, end: Optional[str] = None,
                              loteamento: Optional[str] = None, corretor: Optional[str] = None,
                              status: Optional[str] = None, pay_start: Optional[str] = None,
-                             pay_end: Optional[str] = None, user: dict = Depends(get_current_user)):
-    rows, summary = await _build_report(user, month, year, start, end, loteamento, corretor, status, pay_start, pay_end)
+                             pay_end: Optional[str] = None, q: Optional[str] = None, user: dict = Depends(get_current_user)):
+    rows, summary = await _build_report(user, month, year, start, end, loteamento, corretor, status, pay_start, pay_end, q)
     return {"rows": rows, "summary": summary, "can_edit": user.get("role") != "corretor"}
 
 

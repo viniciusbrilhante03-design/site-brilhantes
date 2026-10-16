@@ -16,17 +16,20 @@ import GeneralMapDialog from "@/components/GeneralMapDialog";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 const PHASES = { em_vendas: "Em vendas", lancamento: "Lançamento", entregue: "Entregue" };
+const TIPOS = { aberto: "Aberto", fechado: "Fechado" };
+const TIPO_STYLE = { aberto: "bg-[hsl(var(--emerald))] text-white", fechado: "bg-primary text-primary-foreground" };
 const PHASE_STYLE = {
   em_vendas: "bg-[hsl(var(--emerald))] text-white",
   lancamento: "bg-[hsl(var(--gold))] text-black",
   entregue: "bg-muted text-foreground",
 };
-const FILTERS = [["all", "Todos"], ["em_vendas", "Em vendas"], ["lancamento", "Lançamentos"], ["entregue", "Entregues"]];
+const FILTERS = [["all", "Todos"], ["aberto", "Aberto"], ["fechado", "Fechado"]];
 
 export default function LoteamentosDialog({ open, onOpenChange }) {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
+  const [dragId, setDragId] = useState(null);
   const [newName, setNewName] = useState("");
   const [detail, setDetail] = useState(null);
   const [mapOpen, setMapOpen] = useState(false);
@@ -65,12 +68,23 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
     reorderMut.mutate(all.map((l) => l.id));
   };
   const canReorder = filter === "all" && !q.trim();
+  const dropOn = (targetId) => {
+    if (!dragId || dragId === targetId) { setDragId(null); return; }
+    const all = [...(lotQ.data || [])];
+    const from = all.findIndex((x) => x.id === dragId);
+    const to = all.findIndex((x) => x.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [m] = all.splice(from, 1);
+    all.splice(to, 0, m);
+    reorderMut.mutate(all.map((x) => x.id));
+    setDragId(null);
+  };
 
   const list = useMemo(() => {
     let all = lotQ.data || [];
     const term = q.trim().toLowerCase();
     if (term) all = all.filter((l) => (l.name || "").toLowerCase().includes(term) || (l.cidade || "").toLowerCase().includes(term));
-    if (filter !== "all") all = all.filter((l) => (l.phase || "em_vendas") === filter);
+    if (filter !== "all") all = all.filter((l) => (l.tipo || "") === filter);
     return all;
   }, [lotQ.data, q, filter]);
 
@@ -120,7 +134,9 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
           ) : (
             <div className="grid sm:grid-cols-2 gap-3">
               {list.map((l) => (
-                <div key={l.id} data-testid={`lot-card-${l.id}`} className="rounded-xl border border-border/60 overflow-hidden bg-card flex flex-col">
+                <div key={l.id} data-testid={`lot-card-${l.id}`} draggable={canReorder}
+                  onDragStart={() => canReorder && setDragId(l.id)} onDragOver={(e) => canReorder && e.preventDefault()} onDrop={() => canReorder && dropOn(l.id)}
+                  className={`rounded-xl border border-border/60 overflow-hidden bg-card flex flex-col ${dragId === l.id ? "opacity-50" : ""} ${canReorder ? "cursor-move" : ""}`}>
                   <div className="relative aspect-video bg-muted">
                     {l.cover ? (
                       <img src={`${BACKEND}/api/loteamentos/images/${l.cover}/raw`} alt={l.name} className="w-full h-full object-cover" loading="lazy" />
@@ -129,9 +145,11 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
                         <ImageIcon className="h-8 w-8" />
                       </div>
                     )}
-                    <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${PHASE_STYLE[l.phase || "em_vendas"]}`}>
-                      {PHASES[l.phase || "em_vendas"]}
-                    </span>
+                    {l.tipo && (
+                      <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${TIPO_STYLE[l.tipo]}`}>
+                        {TIPOS[l.tipo]}
+                      </span>
+                    )}
                     {canReorder && (
                       <div className="absolute top-2 right-2 flex flex-col gap-1">
                         <Button variant="secondary" size="icon" className="h-6 w-6 bg-background/80" data-testid={`lot-move-up-${l.id}`} onClick={() => move(l.id, -1)}><ChevronUp className="h-3.5 w-3.5" /></Button>

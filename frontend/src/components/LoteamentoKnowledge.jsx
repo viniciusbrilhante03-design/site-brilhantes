@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import api from "@/lib/api";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, HelpCircle, Link2, FileText, MessageSquare } from "lucide-react";
+import { Plus, Trash2, HelpCircle, Link2, FileText, MessageSquare, Sparkles, UploadCloud, Loader2, Check, X } from "lucide-react";
 
 const TYPES = [["texto", "Texto/Nota"], ["link", "Link de site"], ["qa", "Pergunta e resposta"]];
 const ICON = { texto: FileText, link: Link2, qa: MessageSquare };
@@ -20,6 +20,43 @@ export default function LoteamentoKnowledge({ lotId }) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [ansMap, setAnsMap] = useState({});
+  const fileRef = useRef(null);
+  const [extracting, setExtracting] = useState(false);
+  const [sugg, setSugg] = useState(null);   // {partial, resumo}
+
+  const SEC_LABEL = { comercial: "Valores", localizacao: "Localização", tecnicos: "Técnico" };
+  const FIELD_LABEL = { valor_a_partir: "Valor a partir de", entrada_minima: "Entrada mínima", max_parcelas: "Máx. parcelas", cidade: "Cidade", estado: "Estado", bairro: "Bairro", metragem_min: "Metragem mín.", metragem_max: "Metragem máx.", tipo: "Tipo" };
+
+  const onExtract = async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    setExtracting(true); setSugg(null);
+    try {
+      const fd = new FormData(); fd.append("file", f);
+      const res = await api.post(`/loteamentos/${lotId}/ai-extract`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const data = res.data.suggestions || {};
+      const partial = {};
+      ["comercial", "localizacao", "tecnicos"].forEach((sec) => {
+        const v = data[sec] || {};
+        Object.entries(v).forEach(([k, val]) => { if (val) { partial[sec] = partial[sec] || {}; partial[sec][k] = { value: String(val), ok: true }; } });
+      });
+      setSugg({ partial, resumo: data.resumo || "" });
+      if (Object.keys(partial).length === 0 && !data.resumo) toast.info("A IA não encontrou campos reconhecíveis no arquivo.");
+    } catch (err) { toast.error(err?.response?.data?.detail || "Falha ao interpretar o arquivo."); }
+    finally { setExtracting(false); if (fileRef.current) fileRef.current.value = ""; }
+  };
+
+  const applyMut = useMutation({
+    mutationFn: (payload) => api.patch(`/loteamentos/${lotId}/specs-merge`, payload),
+    onSuccess: () => { refresh(); setSugg(null); toast.success("Informações aplicadas ao loteamento!"); },
+    onError: () => toast.error("Erro ao aplicar."),
+  });
+  const applySugg = () => {
+    const sp = {};
+    Object.entries(sugg.partial).forEach(([sec, fields]) => {
+      Object.entries(fields).forEach(([k, o]) => { if (o.ok && o.value) { sp[sec] = sp[sec] || {}; sp[sec][k] = o.value; } });
+    });
+    applyMut.mutate({ specs_partial: sp, append_training: sugg.resumo || "" });
+  };
 
   const detQ = useQuery({ queryKey: ["lot-details", lotId], queryFn: async () => (await api.get(`/loteamentos/${lotId}/details`)).data, enabled: !!lotId });
   const qsQ = useQuery({ queryKey: ["lot-questions", lotId], queryFn: async () => (await api.get(`/loteamentos/${lotId}/questions`)).data, enabled: !!lotId });
@@ -41,6 +78,39 @@ export default function LoteamentoKnowledge({ lotId }) {
 
   return (
     <div className="space-y-4" data-testid="lot-knowledge">
+      <div className="rounded-xl border border-[hsl(var(--gold)/0.4)] bg-[hsl(var(--gold)/0.06)] p-3 space-y-2">
+        <div className="font-semibold text-sm flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-[hsl(var(--gold))]" /> Enviar arquivo p/ a IA sugerir o preenchimento</div>
+        <p className="text-xs text-muted-foreground">Book, tabela de preços, PDF ou memorial. A IA lê e sugere os campos — você confirma antes de aplicar.</p>
+        <input ref={fileRef} type="file" accept="application/pdf,.txt,.csv" className="hidden" onChange={onExtract} data-testid="kn-extract-input" />
+        <Button variant="outline" size="sm" className="gap-1.5" disabled={extracting} onClick={() => fileRef.current?.click()} data-testid="kn-extract-btn">
+          {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />} {extracting ? "Lendo com a IA..." : "Enviar arquivo"}
+        </Button>
+
+        {sugg && (
+          <div className="space-y-2 pt-1" data-testid="kn-suggestions">
+            {Object.entries(sugg.partial).map(([sec, fields]) => (
+              <div key={sec}>
+                <div className="text-[11px] font-semibold uppercase text-muted-foreground">{SEC_LABEL[sec] || sec}</div>
+                {Object.entries(fields).map(([k, o]) => (
+                  <div key={k} className="flex items-center gap-2 mt-1" data-testid={`kn-sugg-${sec}-${k}`}>
+                    <span className="text-xs w-28 shrink-0 text-muted-foreground">{FIELD_LABEL[k] || k}</span>
+                    <Input value={o.value} onChange={(e) => setSugg((s) => ({ ...s, partial: { ...s.partial, [sec]: { ...s.partial[sec], [k]: { ...o, value: e.target.value } } } }))} className="h-7 text-xs" disabled={!o.ok} />
+                    <Button variant="ghost" size="icon" className={`h-7 w-7 shrink-0 ${o.ok ? "text-[hsl(var(--emerald))]" : "text-muted-foreground"}`}
+                      onClick={() => setSugg((s) => ({ ...s, partial: { ...s.partial, [sec]: { ...s.partial[sec], [k]: { ...o, ok: !o.ok } } } }))}
+                      data-testid={`kn-sugg-toggle-${sec}-${k}`}>{o.ok ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}</Button>
+                  </div>
+                ))}
+              </div>
+            ))}
+            {sugg.resumo && <div className="text-xs"><span className="text-muted-foreground">Resumo p/ treino: </span>{sugg.resumo}</div>}
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" onClick={applySugg} disabled={applyMut.isPending} data-testid="kn-sugg-apply">Aplicar selecionados</Button>
+              <Button size="sm" variant="ghost" onClick={() => setSugg(null)} data-testid="kn-sugg-cancel">Ignorar</Button>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="rounded-xl border border-border/60 p-3 space-y-2">
         <div className="font-semibold text-sm">O que a IA sabe — adicionar</div>
         <Select value={type} onValueChange={setType}>

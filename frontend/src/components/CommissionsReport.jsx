@@ -34,12 +34,13 @@ export default function CommissionsReport({ canEdit }) {
   const [status, setStatus] = useState("");
   const [payStart, setPayStart] = useState("");
   const [payEnd, setPayEnd] = useState("");
+  const [qText, setQText] = useState("");
   const [cols, setCols] = useState(ALL_COLS);
   const [grouped, setGrouped] = useState(false);
   const [edit, setEdit] = useState(null);        // {id, field}
   const [editVal, setEditVal] = useState("");
 
-  const filters = { year, month, loteamento, corretor, status, payStart, payEnd };
+  const filters = { year, month, loteamento, corretor, status, payStart, payEnd, qText };
   const reportQ = useQuery({
     queryKey: ["comm-report", filters],
     queryFn: async () => {
@@ -51,6 +52,7 @@ export default function CommissionsReport({ canEdit }) {
       if (status) params.set("status", status);
       if (payStart) params.set("pay_start", payStart);
       if (payEnd) params.set("pay_end", payEnd);
+      if (qText.trim()) params.set("q", qText.trim());
       return (await api.get(`/commissions/report?${params}`)).data;
     },
   });
@@ -78,7 +80,8 @@ export default function CommissionsReport({ canEdit }) {
   };
   const saveEdit = (r) => {
     const v = parseFloat(String(editVal).replace(",", ".")) || 0;
-    const body = edit.field === "%" ? { commission_rate: v } : { discount: v };
+    const motivo = window.prompt("Motivo da alteração (fica registrado no histórico):", "") || "";
+    const body = edit.field === "%" ? { commission_rate: v, motivo } : { discount: v, motivo };
     patchMut.mutate({ id: r.sale_id, body });
     setEdit(null);
   };
@@ -143,6 +146,8 @@ export default function CommissionsReport({ canEdit }) {
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2">
+        <input value={qText} onChange={(e) => setQText(e.target.value)} placeholder="Buscar cliente, CPF, loteamento, quadra, lote..."
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm flex-1 min-w-[220px]" data-testid="report-search" />
         <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-9 rounded-md border border-input bg-background px-2 text-sm" data-testid="report-filter-year">
           {[nowYear + 1, nowYear, nowYear - 1, nowYear - 2].map((y) => <option key={y} value={y}>{y}</option>)}
         </select>

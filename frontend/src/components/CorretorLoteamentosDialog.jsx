@@ -10,12 +10,14 @@ import GeneralMapDialog from "@/components/GeneralMapDialog";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 const PHASES = { em_vendas: "Em vendas", lancamento: "Lançamento", entregue: "Entregue" };
+const TIPOS = { aberto: "Aberto", fechado: "Fechado" };
+const TIPO_STYLE = { aberto: "bg-[hsl(var(--emerald))] text-white", fechado: "bg-primary text-primary-foreground" };
 const PHASE_STYLE = {
   em_vendas: "bg-[hsl(var(--emerald))] text-white",
   lancamento: "bg-[hsl(var(--gold))] text-black",
   entregue: "bg-muted text-foreground",
 };
-const FILTERS = [["all", "Todos"], ["em_vendas", "Em vendas"], ["lancamento", "Lançamentos"], ["entregue", "Entregues"]];
+const FILTERS = [["all", "Todos"], ["aberto", "Aberto"], ["fechado", "Fechado"]];
 
 export default function CorretorLoteamentosDialog({ open, onOpenChange }) {
   const [q, setQ] = useState("");
@@ -29,7 +31,7 @@ export default function CorretorLoteamentosDialog({ open, onOpenChange }) {
     let all = lotQ.data || [];
     const term = q.trim().toLowerCase();
     if (term) all = all.filter((l) => (l.name || "").toLowerCase().includes(term) || (l.cidade || "").toLowerCase().includes(term));
-    if (filter !== "all") all = all.filter((l) => (l.phase || "em_vendas") === filter);
+    if (filter !== "all") all = all.filter((l) => (l.tipo || "") === filter);
     return all;
   }, [lotQ.data, q, filter]);
 
@@ -77,9 +79,11 @@ export default function CorretorLoteamentosDialog({ open, onOpenChange }) {
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-muted-foreground/50"><ImageIcon className="h-8 w-8" /></div>
                     )}
-                    <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${PHASE_STYLE[l.phase || "em_vendas"]}`}>
-                      {PHASES[l.phase || "em_vendas"]}
-                    </span>
+                    {l.tipo && (
+                      <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${TIPO_STYLE[l.tipo]}`}>
+                        {TIPOS[l.tipo]}
+                      </span>
+                    )}
                   </div>
                   <div className="p-3 flex-1 flex flex-col gap-2">
                     <div>
