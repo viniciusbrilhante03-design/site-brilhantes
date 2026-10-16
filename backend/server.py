@@ -4207,6 +4207,9 @@ async def create_corretor(data: CorretorProfile, user: dict = Depends(require_ma
         "role": "corretor", "active": data.active, "token_version": 0, "manual": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    cpf_digits = _only_digits(data.cpf or "")
+    if len(cpf_digits) >= 6:
+        doc["password_hash"] = hash_password(cpf_digits)
     await db.users.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -4225,6 +4228,9 @@ async def update_corretor(owner_id: str, data: CorretorProfile, user: dict = Dep
            "phone": data.phone or "", "creci": data.creci or "", "picture": data.picture or "",
            "cpf": data.cpf or "", "birthdate": data.birthdate or "",
            "active": data.active}
+    cpf_digits = _only_digits(data.cpf or "")
+    if len(cpf_digits) >= 6 and not existing.get("password_hash"):
+        upd["password_hash"] = hash_password(cpf_digits)
     await db.users.update_one({"user_id": owner_id}, {"$set": upd})
     return {"ok": True}
 
@@ -4387,6 +4393,10 @@ async def gcal_sync(user: dict = Depends(get_current_user)):
     creds = await _gcal_creds(user["user_id"])
     if not creds:
         raise HTTPException(status_code=400, detail="Conecte sua conta Google primeiro.")
+    return {"ok": True, "counts": await _gcal_sync_user(user, creds)}
+
+
+async def _gcal_sync_user(user: dict, creds) -> dict:
     service = build("calendar", "v3", credentials=creds, cache_discovery=False)
     counts = {"compromissos": 0, "aniversarios": 0, "vencimentos": 0}
     tz = "America/Sao_Paulo"
@@ -4454,7 +4464,39 @@ async def gcal_sync(user: dict = Depends(get_current_user)):
             counts["vencimentos"] += 1
         except Exception as e:
             logger.warning(f"gcal venc fail: {e}")
-    return {"ok": True, "counts": counts}
+    return counts
+
+
+async def _process_calendar_sync():
+    try:
+        users = await db.users.find({"google_calendar.refresh_token": {"$nin": [None, ""]}}, {"_id": 0}).to_list(500)
+        for u in users:
+            creds = await _gcal_creds(u["user_id"])
+            if not creds:
+                continue
+            try:
+                await _gcal_sync_user(u, creds)
+            except Exception as e:
+                logger.warning(f"gcal daily sync failed for {u.get('user_id')}: {e}")
+    except Exception as e:
+        logger.warning(f"calendar sync cron failed: {e}")
+
+
+@api_router.post("/cron/calendar-sync")
+async def cron_calendar_sync(background_tasks: BackgroundTasks,
+                             authorization: Optional[str] = Header(None),
+                             x_webhook_id: Optional[str] = Header(None)):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    if not WEBHOOK_CRON_SECRET or not token or not hmac.compare_digest(token, WEBHOOK_CRON_SECRET):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    run_id = x_webhook_id or ""
+    if run_id:
+        if await db.cron_runs.find_one({"run_id": run_id}):
+            return {"ok": True, "duplicate": True}
+        await db.cron_runs.insert_one({"run_id": run_id, "at": datetime.now(timezone.utc).isoformat()})
+    background_tasks.add_task(_process_calendar_sync)
+    return {"ok": True}
 
 
 app.include_router(api_router)
@@ -4509,6 +4551,16 @@ async def _startup():
             })
     except Exception as e:
         logger.warning(f"broker migration: {e}")
+    # Backfill: corretores manuais sem senha recebem senha inicial = CPF (só dígitos)
+    try:
+        async for u in db.users.find({"role": "corretor", "cpf": {"$nin": [None, ""]},
+                                      "password_hash": {"$in": [None, ""]}}, {"_id": 0, "user_id": 1, "cpf": 1}):
+            digits = _only_digits(u.get("cpf") or "")
+            if len(digits) >= 6:
+                await db.users.update_one({"user_id": u["user_id"]},
+                                          {"$set": {"password_hash": hash_password(digits)}})
+    except Exception as e:
+        logger.warning(f"corretor password backfill: {e}")
 
 
 @app.on_event("shutdown")

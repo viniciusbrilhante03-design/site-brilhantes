@@ -27,3 +27,10 @@ crons:
     method: POST
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     enabled: true
+  - name: calendar-sync-daily
+    description: "Sincroniza diariamente a Google Agenda dos usuários conectados (vencimentos, aniversários, compromissos)"
+    cron: "0 9 * * *"
+    endpoint: "{{BASE_URL}}/api/cron/calendar-sync"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

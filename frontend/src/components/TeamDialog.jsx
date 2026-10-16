@@ -93,7 +93,7 @@ function CorretorForm({ initial, onCancel, onSaved }) {
         <div className="space-y-1.5"><Label>CRECI</Label><Input data-testid="corretor-creci" value={form.creci} onChange={(e) => set("creci", e.target.value)} placeholder="000000-F" /></div>
       </div>
       <div className="grid sm:grid-cols-2 gap-4">
-        <div className="space-y-1.5"><Label>CPF</Label><Input data-testid="broker-cpf" value={form.cpf || ""} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
+        <div className="space-y-1.5"><Label>CPF</Label><Input data-testid="broker-cpf" value={form.cpf || ""} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /><p className="text-xs text-muted-foreground">A senha inicial de acesso do corretor é o <strong>CPF completo</strong> (só os números). Ele pode trocar depois em "Trocar senha".</p></div>
         <div className="space-y-1.5"><Label>Data de nascimento</Label><Input data-testid="broker-birthdate" type="date" value={form.birthdate || ""} onChange={(e) => set("birthdate", e.target.value)} /></div>
       </div>
       <div className="flex justify-end gap-2 pt-2">

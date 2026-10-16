@@ -497,6 +497,15 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
   Validado: status/login-url OK, sync exige conexão (400). **Consentimento real do Google deve ser testado pelo usuário**
   (precisa estar como "usuário de teste" na tela de consentimento). **REPUBLICAR** p/ produção + adicionar URL de produção no Google Cloud.
 
+### Iteração 36 (2026-06 fork) — Fix login corretor manual + cron diário Google Agenda ✅
+- **BUG login corretor (Marília)**: `POST /corretores` (cadastro manual) inseria o usuário SEM password_hash → corretor não logava.
+  Fix: create/update_corretor gravam password_hash = hash_password(CPF só dígitos) quando cpf presente; backfill no startup para
+  corretores com cpf e sem senha (corrige contas antigas na produção ao republicar). Senha inicial = CPF só números. Hint no form (TeamDialog).
+  Validado: criar corretor → login com CPF dígitos = 200; CPF formatado = 401.
+- **Cron diário Google Agenda**: `.emergent/crons.yml` → calendar-sync-daily (09:00 UTC) chama `/api/cron/calendar-sync`
+  (auth WEBHOOK_CRON_SECRET, idempotente) → `_process_calendar_sync` sincroniza todos os usuários conectados. Sync refatorado
+  em `_gcal_sync_user`. Validado: cron 200 com secret, 401 sem.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
