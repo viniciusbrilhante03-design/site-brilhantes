@@ -58,7 +58,10 @@ export default function GeneralMapDialog({ open, onOpenChange, onSelectLot }) {
             Nenhum loteamento com coordenadas. Edite um loteamento e informe o link do Google Maps ou as coordenadas em Localização.
           </p>
         ) : (
-          <div ref={ref} className="w-full h-[60vh] rounded-xl border border-border/60 bg-muted" data-testid="general-map-canvas" />
+          <>
+            <div ref={ref} className="w-full h-[60vh] rounded-xl border border-border/60 bg-muted" data-testid="general-map-canvas" />
+            <p className="text-[11px] text-muted-foreground mt-2">Se aparecer "Oops / RefererNotAllowed", autorize o domínio deste app nas restrições da chave do Google Maps (Google Cloud Console).</p>
+          </>
         )}
       </DialogContent>
     </Dialog>

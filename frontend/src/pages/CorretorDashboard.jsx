@@ -24,7 +24,8 @@ import NotificationsBell from "@/components/NotificationsBell";
 import CelebrationDialog from "@/components/CelebrationDialog";
 import AgendaDialog from "@/components/AgendaDialog";
 import ExportDialog from "@/components/ExportDialog";
-import { LogOut, Moon, Sun, CalendarDays, KeyRound, TrendingUp, Wallet, Clock, Hash, UserRound, Cake, CalendarClock } from "lucide-react";
+import CorretorLoteamentosDialog from "@/components/CorretorLoteamentosDialog";
+import { LogOut, Moon, Sun, CalendarDays, KeyRound, TrendingUp, Wallet, Clock, Hash, UserRound, Cake, CalendarClock, Building2 } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -48,6 +49,7 @@ export default function CorretorDashboard() {
   const [celebrateSale, setCelebrateSale] = useState(null);
   const [agendaOpen, setAgendaOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [lotsOpen, setLotsOpen] = useState(false);
 
   const params = useMemo(() => (month === ALL ? { year } : { month, year }), [month, year]);
 
@@ -127,6 +129,9 @@ export default function CorretorDashboard() {
             <Button data-testid="btn-open-birthdays" variant="outline" className="h-9 gap-1.5" onClick={() => setBirthdaysOpen(true)}>
               <Cake className="h-4 w-4" /><span className="hidden md:inline">Aniversariantes</span>
             </Button>
+            <Button data-testid="btn-open-loteamentos" variant="outline" className="h-9 gap-1.5" onClick={() => setLotsOpen(true)}>
+              <Building2 className="h-4 w-4" /><span className="hidden md:inline">Loteamentos</span>
+            </Button>
             <Button data-testid="btn-open-commissions" variant="outline" className="h-9 gap-1.5" onClick={() => setCommOpen(true)}>
               <Wallet className="h-4 w-4" /><span className="hidden md:inline">Comissões</span>
             </Button>
@@ -187,6 +192,7 @@ export default function CorretorDashboard() {
         onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })}
         onBaixa={(saleId, number, payload) => baixaMut.mutate({ saleId, number, payload })} />
       <CommissionsDialog open={commOpen} onOpenChange={setCommOpen} isMaster={false} />
+      <CorretorLoteamentosDialog open={lotsOpen} onOpenChange={setLotsOpen} />
       <AttachmentsDialog open={!!attachSale} onOpenChange={(v) => { if (!v) setAttachSale(null); }} sale={attachSale} />
       <ChangePasswordDialog open={pwdOpen} onOpenChange={setPwdOpen} />
       <BirthdaysDialog open={birthdaysOpen} onOpenChange={setBirthdaysOpen} />

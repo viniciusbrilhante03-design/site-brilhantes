@@ -28,7 +28,7 @@ function compress(file, max = 1600, q = 0.82) {
   });
 }
 
-export default function LoteamentoGallery({ lotId }) {
+export default function LoteamentoGallery({ lotId, readOnly = false }) {
   const qc = useQueryClient();
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -74,14 +74,18 @@ export default function LoteamentoGallery({ lotId }) {
 
   return (
     <div className="space-y-3" data-testid="lot-gallery">
-      <button data-testid="lot-gallery-dropzone" onClick={() => inputRef.current?.click()} disabled={uploading}
-        className="w-full border-2 border-dashed border-primary/40 rounded-xl p-6 flex flex-col items-center gap-2 hover:border-primary/60 hover:bg-primary/5 transition-colors disabled:opacity-60">
-        {uploading ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <UploadCloud className="h-6 w-6 text-primary" />}
-        <span className="text-sm font-semibold">{uploading ? "Enviando..." : "Enviar fotos e plantas"}</span>
-        <span className="text-xs text-muted-foreground">JPG/PNG — descreva cada imagem para a IA citar os diferenciais visuais</span>
-      </button>
-      <input ref={inputRef} data-testid="lot-gallery-input" type="file" accept="image/*" multiple className="hidden"
-        onChange={(e) => handleFiles(e.target.files)} />
+      {!readOnly && (
+        <>
+          <button data-testid="lot-gallery-dropzone" onClick={() => inputRef.current?.click()} disabled={uploading}
+            className="w-full border-2 border-dashed border-primary/40 rounded-xl p-6 flex flex-col items-center gap-2 hover:border-primary/60 hover:bg-primary/5 transition-colors disabled:opacity-60">
+            {uploading ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <UploadCloud className="h-6 w-6 text-primary" />}
+            <span className="text-sm font-semibold">{uploading ? "Enviando..." : "Enviar fotos e plantas"}</span>
+            <span className="text-xs text-muted-foreground">JPG/PNG — descreva cada imagem para a IA citar os diferenciais visuais</span>
+          </button>
+          <input ref={inputRef} data-testid="lot-gallery-input" type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => handleFiles(e.target.files)} />
+        </>
+      )}
 
       {images.length === 0 ? (
         <div className="text-center text-sm text-muted-foreground py-6">
@@ -93,21 +97,32 @@ export default function LoteamentoGallery({ lotId }) {
             <div key={im.id} data-testid={`lot-image-${im.id}`} className="rounded-xl border border-border/60 overflow-hidden bg-card">
               <div className="relative aspect-video bg-muted">
                 <img src={`${BACKEND}/api/loteamentos/images/${im.id}/raw`} alt={im.caption || "imagem"} className="w-full h-full object-cover" loading="lazy" />
-                <Button data-testid={`lot-image-del-${im.id}`} variant="destructive" size="icon"
-                  className="absolute top-1.5 right-1.5 h-7 w-7" onClick={() => delMut.mutate(im.id)}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                {!readOnly && (
+                  <Button data-testid={`lot-image-del-${im.id}`} variant="destructive" size="icon"
+                    className="absolute top-1.5 right-1.5 h-7 w-7" onClick={() => delMut.mutate(im.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
               <div className="p-2 space-y-1.5">
-                <Select defaultValue={im.type || "foto"} onValueChange={(val) => patchMut.mutate({ id: im.id, data: { type: val } })}>
-                  <SelectTrigger data-testid={`lot-image-type-${im.id}`} className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="foto">Foto</SelectItem>
-                    <SelectItem value="planta">Planta</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input data-testid={`lot-image-caption-${im.id}`} defaultValue={im.caption} placeholder="Descrição (ex: piscina com raia)"
-                  className="h-7 text-xs" onBlur={(e) => { if (e.target.value !== im.caption) patchMut.mutate({ id: im.id, data: { caption: e.target.value } }); }} />
+                {readOnly ? (
+                  <>
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{im.type === "planta" ? "Planta" : "Foto"}</span>
+                    {im.caption && <p className="text-xs">{im.caption}</p>}
+                  </>
+                ) : (
+                  <>
+                    <Select defaultValue={im.type || "foto"} onValueChange={(val) => patchMut.mutate({ id: im.id, data: { type: val } })}>
+                      <SelectTrigger data-testid={`lot-image-type-${im.id}`} className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="foto">Foto</SelectItem>
+                        <SelectItem value="planta">Planta</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input data-testid={`lot-image-caption-${im.id}`} defaultValue={im.caption} placeholder="Descrição (ex: piscina com raia)"
+                      className="h-7 text-xs" onBlur={(e) => { if (e.target.value !== im.caption) patchMut.mutate({ id: im.id, data: { caption: e.target.value } }); }} />
+                  </>
+                )}
               </div>
             </div>
           ))}

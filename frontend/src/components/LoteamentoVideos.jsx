@@ -8,7 +8,7 @@ import { UploadCloud, Trash2, Loader2, Youtube, Video, Link2, Plus } from "lucid
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 
-export default function LoteamentoVideos({ lotId }) {
+export default function LoteamentoVideos({ lotId, readOnly = false }) {
   const qc = useQueryClient();
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -44,23 +44,27 @@ export default function LoteamentoVideos({ lotId }) {
 
   return (
     <div className="space-y-3" data-testid="lot-videos">
-      <div className="rounded-xl border border-border/60 p-3 space-y-2">
-        <div className="font-semibold text-sm flex items-center gap-1.5"><Youtube className="h-4 w-4 text-[hsl(var(--gold))]" /> Adicionar link (YouTube ou URL)</div>
-        <Input data-testid="video-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Título (opcional)" className="h-8" />
-        <div className="flex gap-2">
-          <Input data-testid="video-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://youtube.com/..." className="h-8"
-            onKeyDown={(e) => { if (e.key === "Enter" && url.trim()) linkMut.mutate(); }} />
-          <Button data-testid="video-add-link" size="sm" disabled={!url.trim() || linkMut.isPending} onClick={() => linkMut.mutate()}><Plus className="h-4 w-4" /></Button>
-        </div>
-      </div>
+      {!readOnly && (
+        <>
+          <div className="rounded-xl border border-border/60 p-3 space-y-2">
+            <div className="font-semibold text-sm flex items-center gap-1.5"><Youtube className="h-4 w-4 text-[hsl(var(--gold))]" /> Adicionar link (YouTube ou URL)</div>
+            <Input data-testid="video-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Título (opcional)" className="h-8" />
+            <div className="flex gap-2">
+              <Input data-testid="video-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://youtube.com/..." className="h-8"
+                onKeyDown={(e) => { if (e.key === "Enter" && url.trim()) linkMut.mutate(); }} />
+              <Button data-testid="video-add-link" size="sm" disabled={!url.trim() || linkMut.isPending} onClick={() => linkMut.mutate()}><Plus className="h-4 w-4" /></Button>
+            </div>
+          </div>
 
-      <button data-testid="video-upload-dropzone" onClick={() => inputRef.current?.click()} disabled={uploading}
-        className="w-full border-2 border-dashed border-primary/40 rounded-xl p-5 flex flex-col items-center gap-2 hover:border-primary/60 hover:bg-primary/5 transition-colors disabled:opacity-60">
-        {uploading ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <UploadCloud className="h-6 w-6 text-primary" />}
-        <span className="text-sm font-semibold">{uploading ? "Enviando..." : "Enviar arquivo de vídeo"}</span>
-        <span className="text-xs text-muted-foreground">MP4/MOV — até 200 MB</span>
-      </button>
-      <input ref={inputRef} data-testid="video-upload-input" type="file" accept="video/*" className="hidden" onChange={(e) => handleFile(e.target.files)} />
+          <button data-testid="video-upload-dropzone" onClick={() => inputRef.current?.click()} disabled={uploading}
+            className="w-full border-2 border-dashed border-primary/40 rounded-xl p-5 flex flex-col items-center gap-2 hover:border-primary/60 hover:bg-primary/5 transition-colors disabled:opacity-60">
+            {uploading ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <UploadCloud className="h-6 w-6 text-primary" />}
+            <span className="text-sm font-semibold">{uploading ? "Enviando..." : "Enviar arquivo de vídeo"}</span>
+            <span className="text-xs text-muted-foreground">MP4/MOV — até 200 MB</span>
+          </button>
+          <input ref={inputRef} data-testid="video-upload-input" type="file" accept="video/*" className="hidden" onChange={(e) => handleFile(e.target.files)} />
+        </>
+      )}
 
       {videos.length === 0 ? (
         <div className="text-center text-sm text-muted-foreground py-6"><Video className="h-8 w-8 mx-auto mb-2 opacity-40" /> Nenhum vídeo ainda.</div>
@@ -79,7 +83,7 @@ export default function LoteamentoVideos({ lotId }) {
               </div>
               <div className="p-2 flex items-center gap-2">
                 <div className="flex-1 min-w-0 text-sm truncate">{v.title || (v.kind === "youtube" ? "YouTube" : "Vídeo")}</div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" data-testid={`video-del-${v.id}`} onClick={() => delMut.mutate(v.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                {!readOnly && <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" data-testid={`video-del-${v.id}`} onClick={() => delMut.mutate(v.id)}><Trash2 className="h-3.5 w-3.5" /></Button>}
               </div>
             </div>
           ))}
