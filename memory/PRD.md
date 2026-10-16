@@ -255,6 +255,14 @@ Decisões: quadra/lote seguem texto livre com bloqueio de lote já vendido (sele
 Testado (curl): dedup cliente por acento/caixa (409); venda cria cliente c/ cônjuge/origem/obs/CPF; bloqueio lote vendido; merge loteamento (GUAIÚBA→GUAIUBA) reatribuiu venda sem perda.
 PENDENTE (continuação): FASES 2 a 9. Requer REPUBLICAR p/ produção.
 
+### Iteração 23 (2026-06 fork) — FASE 2 (Valores e Comissão Avançada) ✅ [checkpoint]
+Backend:
+- SaleCreate: `financed_value`, `commission_base` (sale|financed), `discounts[]` (Discount: type/value/reason/notes), `commission_gross`, `commission_net`.
+- `_compute_commission()`: valida (base=financed exige venda>0 e financiado>0; financiado não pode > venda), calcula base_value, bruta = base×%, líquida = bruta − descontos; grava e sincroniza commission_value=bruta. Chamado em create e update. VGV/ranking seguem usando sale_value (não muda).
+Frontend (SaleFormDialog): campo Valor financiado (sempre visível, obrigatório só se base=financiado, botão "Venda − entrada"); seletor de base mostrando os dois valores; label "Base da comissão" + "Comissão bruta"; descontos/taxas linha a linha (tipo/valor/motivo) com Comissão líquida; bloqueio de salvar com msg "Preencha o valor da venda e o valor financiado." Edição carrega os campos (…empty, …initial).
+Testado (curl, exemplos oficiais): 200k/150k 5% base venda→10000; base financiado→7500 (VGV=200000 nos dois); descontos 375+5+50→líquida 7070; erros 400 corretos; create+edit recalculam.
+PENDENTE: loteamento com base/% padrão (opcional) ficou p/ junto da Fase 7 (expansão de loteamentos). FASES 3 a 9. REPUBLICAR p/ produção.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

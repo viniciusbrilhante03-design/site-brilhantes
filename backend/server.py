@@ -159,6 +159,13 @@ class Installment(BaseModel):
     received_date: Optional[str] = None
 
 
+class Discount(BaseModel):
+    type: Optional[str] = ""     # nf | boleto | comercial | outras_taxas | outros_descontos
+    value: float = 0.0
+    reason: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
 class SaleBroker(BaseModel):
     name: str
     split_pct: float = 100.0   # % do pool do corretor que vai para este parceiro
@@ -180,6 +187,11 @@ class SaleCreate(BaseModel):
     sale_value: float
     commission_rate: float = 0.0
     commission_value: float = 0.0
+    financed_value: float = 0.0
+    commission_base: str = "sale"       # "sale" (valor da venda) | "financed" (valor financiado)
+    discounts: List[Discount] = []
+    commission_gross: float = 0.0
+    commission_net: float = 0.0
     broker_split: float = 60.0  # % que vai para o corretor
     broker_commission: float = 0.0
     agency_commission: float = 0.0
@@ -707,6 +719,25 @@ async def _resolve_or_create_client(payload: dict) -> str:
     return c.id
 
 
+def _compute_commission(payload: dict) -> dict:
+    """Valida valores e calcula comissão bruta/líquida conforme a base escolhida."""
+    sv = payload.get("sale_value") or 0
+    fv = payload.get("financed_value") or 0
+    base = payload.get("commission_base") or "sale"
+    if base == "financed" and not (sv > 0 and fv > 0):
+        raise HTTPException(status_code=400, detail="Preencha o valor da venda e o valor financiado.")
+    if fv and sv and fv > sv:
+        raise HTTPException(status_code=400, detail="O valor financiado não pode ser maior que o valor da venda.")
+    base_value = fv if base == "financed" else sv
+    rate = payload.get("commission_rate") or 0
+    gross = round(base_value * rate / 100.0, 2) if rate > 0 else (payload.get("commission_value") or 0)
+    disc = sum((d.get("value") or 0) for d in (payload.get("discounts") or []))
+    payload["commission_gross"] = gross
+    payload["commission_value"] = gross
+    payload["commission_net"] = round(gross - disc, 2)
+    return payload
+
+
 @api_router.post("/sales", response_model=Sale)
 async def create_sale(data: SaleCreate, force: bool = False, force_lot: bool = False,
                       lot_reason: str = "", user: dict = Depends(get_current_user)):
@@ -738,6 +769,7 @@ async def create_sale(data: SaleCreate, force: bool = False, force_lot: bool = F
                 raise HTTPException(status_code=409, detail={"code": "lot_sold", "message": "Este lote já consta como vendido. Fale com o gestor."})
             raise HTTPException(status_code=409, detail={"code": "lot_sold_master", "message": "Este lote já consta como vendido. Deseja registrar mesmo assim?"})
     payload["client_id"] = await _resolve_or_create_client(payload)
+    _compute_commission(payload)
     sale = Sale(**payload, user_id=user["user_id"], owner_id=owner_id,
                 owner_name=owner_name, broker_ids=broker_ids)
     await db.sales.insert_one(sale.model_dump())
@@ -771,6 +803,7 @@ async def update_sale(sale_id: str, data: SaleCreate, user: dict = Depends(get_c
                      "owner_name": resolved[0]["name"], "broker_ids": broker_ids}
         else:
             extra = {"broker_ids": []}
+    _compute_commission(payload)
     await db.sales.update_one({"id": sale_id}, {"$set": {**payload, **extra}})
     await _audit("update", {**existing, **payload, **extra}, user)
     return {**existing, **payload, **extra}

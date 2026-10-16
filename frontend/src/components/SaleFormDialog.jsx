@@ -30,6 +30,9 @@ const empty = {
   sale_value: "",
   commission_rate: "",
   commission_value: "",
+  financed_value: "",
+  commission_base: "sale",
+  discounts: [],
   broker_split: 60,
   commission_received: false,
   entrada: "",
@@ -206,6 +209,15 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
     }
   };
 
+  const num = (v) => parseFloat(v) || 0;
+  const baseValue = form.commission_base === "financed" ? num(form.financed_value) : num(form.sale_value);
+  const grossComm = num(form.commission_rate) > 0 ? +(baseValue * num(form.commission_rate) / 100).toFixed(2) : num(form.commission_value);
+  const discTotal = (form.discounts || []).reduce((a, d) => a + num(d.value), 0);
+  const netComm = +(grossComm - discTotal).toFixed(2);
+  const addDiscount = () => set("discounts", [...(form.discounts || []), { type: "nf", value: "", reason: "", notes: "" }]);
+  const updateDiscount = (i, k, v) => set("discounts", (form.discounts || []).map((d, idx) => (idx === i ? { ...d, [k]: v } : d)));
+  const removeDiscount = (i) => set("discounts", (form.discounts || []).filter((_, idx) => idx !== i));
+
   const handleSubmit = () => {
     const cleanBrokers = partners
       .filter((b) => (b.name || "").trim())
@@ -234,6 +246,10 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
       sale_value: parseFloat(form.sale_value) || 0,
       commission_rate: parseFloat(form.commission_rate) || 0,
       commission_value: parseFloat(form.commission_value) || 0,
+      financed_value: parseFloat(form.financed_value) || 0,
+      commission_base: form.commission_base || "sale",
+      discounts: (form.discounts || []).filter((d) => (parseFloat(d.value) || 0) !== 0)
+        .map((d) => ({ type: d.type || "", value: parseFloat(d.value) || 0, reason: d.reason || "", notes: d.notes || "" })),
       broker_split: parseFloat(form.broker_split) || 0,
       broker_commission: +brokerComm.toFixed(2),
       agency_commission: +agencyComm.toFixed(2),
@@ -247,8 +263,9 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
   };
 
   const brokersValid = partners.some((b) => (b.name || "").trim()) && sumOk;
+  const financedOk = form.commission_base !== "financed" || ((parseFloat(form.sale_value) || 0) > 0 && (parseFloat(form.financed_value) || 0) > 0);
   const valid = form.property_name.trim() && form.quadra.trim() && form.lote.trim()
-    && form.client_name.trim() && brokersValid && (parseFloat(form.sale_value) || 0) > 0;
+    && form.client_name.trim() && brokersValid && (parseFloat(form.sale_value) || 0) > 0 && financedOk;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -465,6 +482,73 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
                 <Label>Comissão total (R$)</Label>
                 <CurrencyInput data-testid="sale-form-commission-value" value={form.commission_value}
                   onChange={(v) => set("commission_value", v)} placeholder="0,00" />
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Valor financiado (R$){form.commission_base === "financed" ? <span className="text-destructive"> *</span> : " (OPCIONAL)"}</Label>
+                <div className="flex gap-2">
+                  <CurrencyInput data-testid="sale-form-financed-input" value={form.financed_value}
+                    onChange={(v) => set("financed_value", v)} placeholder="0,00" />
+                  <Button type="button" variant="outline" size="sm" className="h-10 whitespace-nowrap text-xs shrink-0"
+                    data-testid="sale-form-suggest-financed"
+                    onClick={() => set("financed_value", String(Math.max((parseFloat(form.sale_value) || 0) - (parseFloat(form.entrada) || 0), 0)))}>
+                    Venda − entrada
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Calcular a comissão sobre</Label>
+                <div className="flex flex-col gap-1.5">
+                  <Button type="button" size="sm" className="h-9 justify-between"
+                    variant={form.commission_base === "sale" ? "default" : "outline"}
+                    data-testid="base-sale" onClick={() => set("commission_base", "sale")}>
+                    <span>Valor total da venda</span><span className="tabular">{brl(parseFloat(form.sale_value) || 0)}</span>
+                  </Button>
+                  <Button type="button" size="sm" className="h-9 justify-between"
+                    variant={form.commission_base === "financed" ? "default" : "outline"}
+                    data-testid="base-financed" onClick={() => set("commission_base", "financed")}>
+                    <span>Valor financiado</span><span className="tabular">{brl(parseFloat(form.financed_value) || 0)}</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground" data-testid="commission-base-label">
+              Base da comissão: <b>{form.commission_base === "financed" ? "Valor financiado" : "Valor total da venda"}</b>
+              {" "}· Comissão bruta: <b className="text-[hsl(var(--emerald))]">{brl(grossComm)}</b>
+            </p>
+            {!financedOk && (
+              <p className="text-xs text-destructive font-medium" data-testid="financed-required-msg">Preencha o valor da venda e o valor financiado.</p>
+            )}
+
+            <div className="rounded-xl border border-border/60 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Descontos e taxas (OPCIONAL)</Label>
+                <Button type="button" variant="ghost" size="sm" className="h-7 text-xs gap-1" data-testid="add-discount" onClick={addDiscount}>
+                  <Plus className="h-3.5 w-3.5" /> Adicionar
+                </Button>
+              </div>
+              {(form.discounts || []).map((d, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2" data-testid={`discount-row-${i}`}>
+                  <select value={d.type} onChange={(e) => updateDiscount(i, "type", e.target.value)}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm" data-testid={`discount-type-${i}`}>
+                    <option value="nf">Nota fiscal / imposto</option>
+                    <option value="boleto">Taxa de boleto</option>
+                    <option value="comercial">Desconto comercial</option>
+                    <option value="outras_taxas">Outras taxas</option>
+                    <option value="outros_descontos">Outros descontos</option>
+                  </select>
+                  <div className="w-32"><CurrencyInput value={d.value} onChange={(v) => updateDiscount(i, "value", v)} placeholder="0,00" /></div>
+                  <Input className="flex-1 min-w-[120px]" placeholder="Motivo" value={d.reason} onChange={(e) => updateDiscount(i, "reason", e.target.value)} />
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive shrink-0" data-testid={`discount-remove-${i}`} onClick={() => removeDiscount(i)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <div className="flex items-center justify-between text-sm pt-1 border-t border-border/40">
+                <span className="text-muted-foreground">Comissão líquida</span>
+                <span className="font-heading font-bold tabular text-[hsl(var(--emerald))]" data-testid="commission-net">{brl(netComm)}</span>
               </div>
             </div>
 
