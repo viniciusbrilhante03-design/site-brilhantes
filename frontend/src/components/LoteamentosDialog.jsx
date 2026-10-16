@@ -5,16 +5,27 @@ import api from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Building2, Plus, Trash2, Sparkles, Search } from "lucide-react";
+import { Building2, Plus, Trash2, Search, MapPin, ImageIcon } from "lucide-react";
 import LoteamentoDetailsDialog from "@/components/LoteamentoDetailsDialog";
+
+const BACKEND = process.env.REACT_APP_BACKEND_URL;
+const PHASES = { em_vendas: "Em vendas", lancamento: "Lançamento", entregue: "Entregue" };
+const PHASE_STYLE = {
+  em_vendas: "bg-[hsl(var(--emerald))] text-white",
+  lancamento: "bg-[hsl(var(--gold))] text-black",
+  entregue: "bg-muted text-foreground",
+};
+const FILTERS = [["all", "Todos"], ["em_vendas", "Em vendas"], ["lancamento", "Lançamentos"], ["entregue", "Entregues"]];
 
 export default function LoteamentosDialog({ open, onOpenChange }) {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("all");
   const [newName, setNewName] = useState("");
   const [detail, setDetail] = useState(null);
 
@@ -34,17 +45,23 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
     mutationFn: (id) => api.delete(`/loteamentos/${id}`),
     onSuccess: () => { invalidate(); toast.success("Loteamento removido."); },
   });
+  const phaseMut = useMutation({
+    mutationFn: ({ id, phase }) => api.patch(`/loteamentos/${id}/meta`, { phase }),
+    onSuccess: invalidate,
+  });
 
   const list = useMemo(() => {
-    const all = lotQ.data || [];
+    let all = lotQ.data || [];
     const term = q.trim().toLowerCase();
-    return term ? all.filter((l) => (l.name || "").toLowerCase().includes(term)) : all;
-  }, [lotQ.data, q]);
+    if (term) all = all.filter((l) => (l.name || "").toLowerCase().includes(term) || (l.cidade || "").toLowerCase().includes(term));
+    if (filter !== "all") all = all.filter((l) => (l.phase || "em_vendas") === filter);
+    return all;
+  }, [lotQ.data, q, filter]);
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="loteamentos-dialog">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="loteamentos-dialog">
           <DialogHeader>
             <DialogTitle className="font-heading text-xl flex items-center gap-2">
               <Building2 className="h-5 w-5 text-[hsl(var(--gold))]" /> Loteamentos
@@ -62,7 +79,16 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
 
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input data-testid="lot-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar loteamento..." className="pl-9" />
+            <Input data-testid="lot-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar loteamento ou cidade..." className="pl-9" />
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {FILTERS.map(([v, lbl]) => (
+              <button key={v} data-testid={`lot-filter-${v}`} onClick={() => setFilter(v)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${filter === v ? "bg-primary text-primary-foreground border-primary" : "border-border/60 text-muted-foreground hover:bg-muted/50"}`}>
+                {lbl}
+              </button>
+            ))}
           </div>
 
           {lotQ.isLoading ? (
@@ -70,34 +96,56 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
           ) : list.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground">
               <Building2 className="h-10 w-10 mx-auto mb-2 opacity-40" />
-              Nenhum loteamento. Cadastre o primeiro acima.
+              Nenhum loteamento encontrado.
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 gap-2">
+            <div className="grid sm:grid-cols-2 gap-3">
               {list.map((l) => (
-                <div key={l.id} data-testid={`lot-card-${l.id}`} className="flex items-center gap-2 rounded-xl border border-border/60 p-3">
-                  <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span className="flex-1 text-sm font-medium truncate">{l.name}</span>
-                  <Button variant="outline" size="sm" className="h-8 gap-1 text-primary" data-testid={`lot-manage-${l.id}`} onClick={() => setDetail(l)}>
-                    <Sparkles className="h-3.5 w-3.5" /> Gerenciar
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive shrink-0" data-testid={`lot-remove-${l.id}`}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Remover "{l.name}"?</AlertDialogTitle>
-                        <AlertDialogDescription>As vendas já cadastradas não são afetadas.</AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => delMut.mutate(l.id)}>Remover</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                <div key={l.id} data-testid={`lot-card-${l.id}`} className="rounded-xl border border-border/60 overflow-hidden bg-card flex flex-col">
+                  <div className="relative aspect-video bg-muted">
+                    {l.cover ? (
+                      <img src={`${BACKEND}/api/loteamentos/images/${l.cover}/raw`} alt={l.name} className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground/50">
+                        <ImageIcon className="h-8 w-8" />
+                      </div>
+                    )}
+                    <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${PHASE_STYLE[l.phase || "em_vendas"]}`}>
+                      {PHASES[l.phase || "em_vendas"]}
+                    </span>
+                  </div>
+                  <div className="p-3 flex-1 flex flex-col gap-2">
+                    <div>
+                      <div className="font-bold truncate">{l.name}</div>
+                      {l.cidade && <div className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{l.cidade}</div>}
+                    </div>
+                    <Select value={l.phase || "em_vendas"} onValueChange={(v) => phaseMut.mutate({ id: l.id, phase: v })}>
+                      <SelectTrigger data-testid={`lot-phase-${l.id}`} className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(PHASES).map(([v, lbl]) => <SelectItem key={v} value={v}>{lbl}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex gap-2 mt-auto">
+                      <Button className="flex-1 h-8 text-xs" data-testid={`lot-manage-${l.id}`} onClick={() => setDetail(l)}>Ver detalhes</Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive shrink-0" data-testid={`lot-remove-${l.id}`}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remover "{l.name}"?</AlertDialogTitle>
+                            <AlertDialogDescription>As vendas já cadastradas não são afetadas.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => delMut.mutate(l.id)}>Remover</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>

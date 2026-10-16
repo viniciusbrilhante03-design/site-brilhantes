@@ -595,7 +595,15 @@ async def _resolve_corretor_by_name(name: str):
 @api_router.get("/loteamentos")
 async def list_loteamentos(user: dict = Depends(get_current_user)):
     docs = await db.loteamentos.find({}, {"_id": 0}).to_list(3000)
-    docs.sort(key=lambda d: (d.get("name") or "").lower())
+    imgs = await db.lot_images.find({}, {"_id": 0, "id": 1, "lot_id": 1, "created_at": 1}).sort("created_at", 1).to_list(5000)
+    cover = {}
+    for im in imgs:
+        cover.setdefault(im["lot_id"], im["id"])
+    for d in docs:
+        d.setdefault("phase", "em_vendas")
+        d["cidade"] = ((d.get("specs") or {}).get("localizacao") or {}).get("cidade") or ""
+        d["cover"] = cover.get(d.get("id"))
+    docs.sort(key=lambda d: (d.get("order", 9999), (d.get("name") or "").lower()))
     return docs
 
 
@@ -612,6 +620,19 @@ async def add_loteamento(request: Request, user: dict = Depends(require_master))
 @api_router.delete("/loteamentos/{lot_id}")
 async def delete_loteamento(lot_id: str, user: dict = Depends(require_master)):
     await db.loteamentos.delete_one({"id": lot_id})
+    return {"ok": True}
+
+
+@api_router.patch("/loteamentos/{lot_id}/meta")
+async def update_loteamento_meta(lot_id: str, request: Request, user: dict = Depends(require_master)):
+    body = await request.json()
+    upd = {}
+    if body.get("phase") in ("em_vendas", "lancamento", "entregue"):
+        upd["phase"] = body["phase"]
+    if isinstance(body.get("order"), int):
+        upd["order"] = body["order"]
+    if upd:
+        await db.loteamentos.update_one({"id": lot_id}, {"$set": upd})
     return {"ok": True}
 
 
