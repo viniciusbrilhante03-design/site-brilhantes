@@ -15,6 +15,7 @@ import GoalsCard from "@/components/GoalsCard";
 import SalesSection from "@/components/SalesSection";
 import SaleFormDialog from "@/components/SaleFormDialog";
 import InstallmentsDialog from "@/components/InstallmentsDialog";
+import CommissionsDialog from "@/components/CommissionsDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import BirthdaysDialog from "@/components/BirthdaysDialog";
@@ -39,6 +40,7 @@ export default function CorretorDashboard() {
   const [attachSale, setAttachSale] = useState(null);
   const [pwdOpen, setPwdOpen] = useState(false);
   const [birthdaysOpen, setBirthdaysOpen] = useState(false);
+  const [commOpen, setCommOpen] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
   const [dupPayload, setDupPayload] = useState(null);
 
@@ -68,6 +70,11 @@ export default function CorretorDashboard() {
   const toggleMut = useMutation({
     mutationFn: ({ saleId, number }) => api.patch(`/sales/${saleId}/installments/${number}`),
     onSuccess: (res) => { invalidateAll(); if (instSale) setInstSale(res.data); toast.success("Parcela atualizada!"); },
+  });
+  const baixaMut = useMutation({
+    mutationFn: ({ saleId, number, payload }) => api.post(`/sales/${saleId}/installments/${number}/baixa`, payload),
+    onSuccess: (res) => { invalidateAll(); if (instSale) setInstSale(res.data); toast.success("Baixa registrada!"); },
+    onError: () => toast.error("Erro ao registrar baixa."),
   });
 
   const handleExport = async (type) => {
@@ -111,6 +118,9 @@ export default function CorretorDashboard() {
             <Button variant="outline" size="icon" className="h-9 w-9" onClick={theme.toggle}>{theme.dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</Button>
             <Button data-testid="btn-open-birthdays" variant="outline" className="h-9 gap-1.5" onClick={() => setBirthdaysOpen(true)}>
               <Cake className="h-4 w-4" /><span className="hidden md:inline">Aniversariantes</span>
+            </Button>
+            <Button data-testid="btn-open-commissions" variant="outline" className="h-9 gap-1.5" onClick={() => setCommOpen(true)}>
+              <Wallet className="h-4 w-4" /><span className="hidden md:inline">Comissões</span>
             </Button>
             <NotificationsBell />
             <DropdownMenu>
@@ -166,7 +176,9 @@ export default function CorretorDashboard() {
         onSubmit={(p) => createMut.mutate(p)} initial={editing} brokers={[display]}
         loteamentos={loteamentos} clients={clientsQ.data || []} lockBroker lockBrokerName={display} />
       <InstallmentsDialog open={!!instSale} onOpenChange={(v) => { if (!v) setInstSale(null); }} sale={instSale}
-        onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })} />
+        onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })}
+        onBaixa={(saleId, number, payload) => baixaMut.mutate({ saleId, number, payload })} />
+      <CommissionsDialog open={commOpen} onOpenChange={setCommOpen} />
       <AttachmentsDialog open={!!attachSale} onOpenChange={(v) => { if (!v) setAttachSale(null); }} sale={attachSale} />
       <ChangePasswordDialog open={pwdOpen} onOpenChange={setPwdOpen} />
       <BirthdaysDialog open={birthdaysOpen} onOpenChange={setBirthdaysOpen} />

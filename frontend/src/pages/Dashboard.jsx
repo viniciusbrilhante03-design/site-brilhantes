@@ -20,6 +20,8 @@ import RankingCard from "@/components/RankingCard";
 import SalesSection from "@/components/SalesSection";
 import SaleFormDialog from "@/components/SaleFormDialog";
 import InstallmentsDialog from "@/components/InstallmentsDialog";
+import CommissionsDialog from "@/components/CommissionsDialog";
+import CancelSaleDialog from "@/components/CancelSaleDialog";
 import ImportDialog from "@/components/ImportDialog";
 import AttachmentsDialog from "@/components/AttachmentsDialog";
 import TeamDialog from "@/components/TeamDialog";
@@ -33,7 +35,7 @@ import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import GoalsCard from "@/components/GoalsCard";
 import GoalsDialog from "@/components/GoalsDialog";
 
-import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake, Merge } from "lucide-react";
+import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake, Merge, Wallet } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -50,6 +52,8 @@ export default function Dashboard() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [instSale, setInstSale] = useState(null);
+  const [commOpen, setCommOpen] = useState(false);
+  const [cancelSale, setCancelSale] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [attachSale, setAttachSale] = useState(null);
   const [teamOpen, setTeamOpen] = useState(false);
@@ -171,6 +175,17 @@ export default function Dashboard() {
     onError: () => toast.error("Erro ao atualizar parcela."),
   });
 
+  const baixaMut = useMutation({
+    mutationFn: ({ saleId, number, payload }) => api.post(`/sales/${saleId}/installments/${number}/baixa`, payload),
+    onSuccess: (res) => { invalidateAll(); if (instSale) setInstSale(res.data); toast.success("Baixa registrada!"); },
+    onError: () => toast.error("Erro ao registrar baixa."),
+  });
+  const cancelMut = useMutation({
+    mutationFn: ({ id, reason }) => api.patch(`/sales/${id}/cancel`, { reason }),
+    onSuccess: () => { invalidateAll(); setCancelSale(null); toast.success("Venda cancelada (distrato)."); },
+    onError: () => toast.error("Erro ao cancelar venda."),
+  });
+
   const handleExport = async (type) => {
     try {
       toast.info("Gerando relatório...");
@@ -241,6 +256,11 @@ export default function Dashboard() {
               <Merge className="h-4 w-4" /><span className="hidden md:inline">Duplicados</span>
             </Button>
 
+            <Button data-testid="btn-open-commissions" variant="outline" className="h-9 gap-1.5"
+              onClick={() => setCommOpen(true)}>
+              <Wallet className="h-4 w-4" /><span className="hidden md:inline">Comissões</span>
+            </Button>
+
             <Button data-testid="btn-open-team" variant="outline" className="h-9 gap-1.5"
               onClick={() => setTeamOpen(true)}>
               <UsersRound className="h-4 w-4" /><span className="hidden md:inline">Equipe</span>
@@ -300,6 +320,7 @@ export default function Dashboard() {
           onDuplicate={(s) => { setEditing({ ...s, id: undefined, quadra: "", lote: "", installments: [] }); setFormOpen(true); }}
           onDelete={(id) => deleteMut.mutate(id)}
           onTransfer={(s) => setTransferSale(s)}
+          onCancel={(s) => setCancelSale(s)}
           onOpenInstallments={(s) => setInstSale(s)}
           onImport={() => setImportOpen(true)}
           onExport={handleExport}
@@ -322,7 +343,11 @@ export default function Dashboard() {
         onOpenChange={(v) => { if (!v) setInstSale(null); }}
         sale={instSale}
         onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })}
+        onBaixa={(saleId, number, payload) => baixaMut.mutate({ saleId, number, payload })}
       />
+      <CommissionsDialog open={commOpen} onOpenChange={setCommOpen} />
+      <CancelSaleDialog sale={cancelSale} onOpenChange={(v) => { if (!v) setCancelSale(null); }}
+        onConfirm={(id, reason) => cancelMut.mutate({ id, reason })} />
 
       <ImportDialog
         open={importOpen}

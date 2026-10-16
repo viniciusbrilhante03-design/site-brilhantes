@@ -272,6 +272,14 @@ Backend:
 Testado (curl): baixa 700→parcial saldo500, +500→pago; cancel reduz VGV em 100k e some da lista; extrato OK.
 PENDENTE (continuação): FRONTEND da Fase 3 — seção Comissões (ARTE 04 Extrato c/ PDF, 05 Agenda, 06 Lançamento, 07 Dar baixa) + botão Cancelar venda + nomes "Parcelas da venda" vs "Parcelas da comissão". Depois FASES 4 a 9. REPUBLICAR.
 
+### Iteração 25 (2026-06 fork) — FASE 3 frontend (Comissões) ✅ [checkpoint]
+- InstallmentsDialog reescrito: "Parcelas da comissão" com status 🟡🟠🟢🔴, líquido/pago/saldo e "Dar baixa" (valor, forma PIX/Boleto/Transferência, tipo recebimento/repasse) via POST baixa.
+- CommissionsDialog (botão "Comissões" nos 2 painéis): abas Extrato (KPIs vendas/VGV/gerada/recebida/a receber/vencida + próximos recebimentos + PDF via print) e Agenda (vencimentos em aberto).
+- CancelSaleDialog + botão Cancelar (gestor) no SalesSection → PATCH /cancel com motivo.
+- Dashboards: baixaMut, cancelMut (gestor), commOpen; CorretorDashboard: baixaMut + Comissões.
+- Frontend compila sem erros; app carrega (login OK). screenshot_tool não conclui login e2e (limitação da automação); backend 100% curl.
+PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenAI — exigirá chave do gestor.) REPUBLICAR p/ produção.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
