@@ -410,6 +410,16 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
 - **Baixa de parcela**: opção de **anexar comprovante** (InstallmentsDialog → baixa-receipt-btn/-input); persiste em payments[].receipt/receipt_name; badge "Comprovante anexado".
 - Testado: testing_agent — backend 15/15 pytest (report + corretor cpf/birthdate) e frontend 100% (iteration_13/14.json). **REPUBLICAR** p/ produção.
 
+### Iteração 37 (2026-06 fork) — Loteamento Vídeos/Mapa/Documentos + reorder + Mapa geral + seleção em lote ✅
+- **Object storage (Emergent)**: helpers `_init_storage/_put_object/_get_object` (usa EMERGENT_LLM_KEY) p/ uploads de vídeo e documentos.
+- **Vídeos do loteamento**: `lot_videos` + endpoints `/loteamentos/{id}/videos` (GET), `/videos/link` (YouTube/URL, detecta youtube_id), `/videos/upload` (arquivo, object storage), `/videos/{vid}/raw` (stream), DELETE (soft). Frontend `LoteamentoVideos.jsx` (aba Vídeos).
+- **Documentos (PDF/Tabela de preço p/ corretor baixar)**: `lot_docs` + `/loteamentos/{id}/docs` (GET/POST), `/docs/{id}/download` (attachment), DELETE (soft). Categorias: documento, tabela_preco. Frontend `LoteamentoDocs.jsx` (aba Documentos).
+- **Mapa (Google Maps)**: chave em `REACT_APP_GOOGLE_MAPS_API_KEY`. `lib/gmaps.js` (loader). Aba Mapa por loteamento (`LoteamentoMap.jsx`) a partir de lat/lng; `GeneralMapDialog.jsx` = aba "Mapa geral" (botão lot-open-map) com marcadores de todos os lotes → clique abre detalhes. Coordenadas: campo `specs.localizacao.coords` ou link do Maps → `_parse_latlng` grava lat/lng top-level (exposto em `/loteamentos`).
+- **Reorder**: POST `/loteamentos/reorder` {ids}; setas ↑/↓ nos cards (quando filtro=Todos e sem busca).
+- **Seleção múltipla no Dashboard (gestor)**: checkboxes por linha + selecionar todos; barra com Excluir/Transferir em lote → POST `/sales/bulk-delete` e `/sales/bulk-transfer` (master).
+- Testado: testing_agent — backend 22/22 pytest + frontend 100% (iteration_15.json). ⚠️ No preview o Google Maps pode cair em erro por **restrição de referrer da chave** — adicionar os domínios preview+produção nas restrições da chave Google. **REPUBLICAR** p/ produção.
+- PENDENTE P1 restante: ARTE 17 (tela de Config OpenAI: trocar chave/modelo/limite/uso), "abas visíveis p/ corretores" + **catálogo de loteamentos para o corretor** (hoje só o gestor vê vídeos/docs/mapa).
+
 ### Iteração 34 (2026-06 fork) — Copys por categoria + Base de conhecimento IA + Perguntas sem resposta ✅
 - **Copys por categoria (ARTE 14)**: `copies[]` no doc loteamento. POST/PUT/DELETE `/loteamentos/{id}/copies` + POST
   `/loteamentos/{id}/copies/generate` {category, channel} (IA gera por categoria usando specs+galeria+conhecimento).

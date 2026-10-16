@@ -1,0 +1,29 @@
+{
+  "summary": "P1 testing (Loteamento Vídeos/Mapa/Docs + Coords + Reorder + Sales bulk delete/transfer). Backend: 22/22 pytest PASSED em /app/backend/tests/test_p1_loteamentos_bulk.py cobrindo YouTube/URL/upload de vídeo (soft-delete), docs upload (categoria tabela_preco e fallback para documento), download com Content-Disposition attachment, parsing de coords '-27.5954,-48.5480' e link do Google Maps (@lat,lng), reorder, bulk-delete/bulk-transfer (incl. validação de broker vazio=400), e RBAC do corretor (401/403 em upload/delete/reorder/bulk; GET/download permitidos). Frontend (master, cookie session_token=qa_session_vinicius_001): Loteamentos abre, 30 cards com setas lot-move-up/lot-move-down, botão Mapa geral abre general-map-dialog. Ver detalhes abre lot-details-dialog com abas lot-tab-videos/lot-tab-mapa/lot-tab-docs. Aba Vídeos: adicionar YouTube link exibe player (video-vid_*) e exclui. Aba Documentos: upload PDF via doc-upload-input mostra doc-doc_* com doc-download-* visível; delete remove. Dashboard: busca TEST_fe_bulk → marcar sale-select-* exibe sales-bulk-bar com contador '2 selecionada(s)', sales-bulk-transfer abre dialog, select corretor (opção 'Aninha') e sales-bulk-transfer-confirm; depois sales-bulk-delete→confirm exibe toast '2 venda(s) excluída(s).' e remove todas as vendas de teste. Vendas de teste criadas via POST /api/sales e removidas ao final — base demo não alterada.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Loteamentos → Mapa / Mapa geral", "issues": ["general-map-error aparece no ambiente de teste (restrição de referrer da chave Google Maps). Container monta sem JS error — ok para MVP, mas em produção verificar restrições da chave em REACT_APP_GOOGLE_MAPS_API_KEY."]},
+      {"screen": "Dashboard (Recharts)", "issues": ["Warnings 'width(-1)/height(-1)' do Recharts persistem no console (container de métricas) — preexistente."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_p1_loteamentos_bulk.py", "/app/test_reports/pytest/p1_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py >3900 linhas — split em módulos (loteamentos / sales / storage / auth) seria benéfico para manutenção; a feature de object storage e videos/docs cresceu muito dentro do mesmo arquivo.",
+    "GET /api/sales/{id} não existe (retorna 405), mas endpoints de bulk assumem leitura implícita; para debug/verificação do frontend seria útil expor GET /api/sales/{id}.",
+    "stream_lot_video (/videos/{id}/raw) carrega o arquivo inteiro em memória sem suporte a Range — ok para MVP conforme nota, mas para vídeos >50MB vai causar latência; considerar streaming/Range em pós-MVP.",
+    "upload_lot_doc e upload_lot_video leem todo o conteúdo antes de validar tamanho (await file.read() seguido de len()); para arquivos muito grandes isso aloca RAM antes de rejeitar. Validar via Content-Length/chunked read.",
+    "LoteamentoDocs.jsx mantém input type=file hidden (correto); se quiser automação visível pode trocar por 'sr-only'. Playwright precisa de set_input_files direto (ok).",
+    "GeneralMapDialog mostra 'general-map-error' quando Google Maps falha a carregar — mensagem genérica. Considerar instruir sobre restrições de referrer da chave."
+  ],
+  "updated_files": ["/app/backend/tests/test_p1_loteamentos_bulk.py"],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100%"},
+  "test_credentials": "Master Bearer/cookie: qa_session_vinicius_001. Corretor: carlos.teste@brilhantes.com / 12345678900.",
+  "seed_data_creation": "Nenhum dado persistido na base demo. Criadas e deletadas: 2+2 vendas TEST_bulk_*/TEST_fe_bulk_*, 2 vídeos (yt+url), 2 docs (PDF). Coords do primeiro loteamento foram alteradas durante o teste e deixadas no último estado válido (-23.5505,-46.6333) — se precisar reverter, usar PUT /api/loteamentos/{id}/details com os valores originais; caso contrário, apenas aparecerá como pin no mapa geral.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Fluxo P1 novo (vídeos/docs/mapa/reorder + bulk) 100% verde. Arquivo de testes: /app/backend/tests/test_p1_loteamentos_bulk.py (pytest-xdist safe; usa Bearer master + login do corretor carlos.teste@brilhantes.com). Para o UI, lembrar que doc-upload-input/video-upload-input são <input type=file hidden> — usar page.set_input_files direto sem wait_for_selector(visible). general-map-canvas pode cair em general-map-error no ambiente preview (restrição Google Maps). Testes de bulk DEVEM criar vendas próprias (POST /api/sales com sale_value, não 'value') e limpar ao final."
+}
