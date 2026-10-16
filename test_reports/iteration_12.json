@@ -1,0 +1,37 @@
+{
+  "summary": "Verificação E2E Fase 9 concluída. Backend 24/24 pytest verdes em /app/backend/tests/test_phase9_e2e.py cobrindo: Appointments CRUD + master vê todos, ranking opt-out toggle (remove/readiciona do /api/ranking), Export xlsx+pdf com colunas filtradas (parsing openpyxl do header), GET/PUT /loteamentos/{id}/details (specs persistidos + requires-master), /generate-copy nos 3 canais (stories/feed/whatsapp — copies distintas), Galeria POST/GET/raw/DELETE (foto 1x1 PNG), IA Especialista responde e recusa dado não informado (gpt-4o-mini), Import AI preview retorna column_mapping, Birthdays estrutura OK. UI validada em preview: corretor login → CorretorDashboard carrega; Agenda abre, cria/exibe appt (TEST_UI_Appt visível); criação de venda dispara CelebrationDialog corretamente (broker='Carlão', loteamento='Casa Praia Grande', vgv='R$ 250.000,00'), sem dados do cliente no dialog, botões Compartilhar/Download/Som presentes; Export dialog abre com select-all/none/xlsx/pdf; cookie session_token master injetado → /dashboard do gestor carrega, Equipe→Loteamentos→✨ abre LoteamentoDetailsDialog com abas Dados/Galeria/IA; IA chat responde (lot-ai-msg-0 e lot-ai-msg-1). Dados de teste limpos (4 vendas TEST_* deletadas via DELETE /sales/{id}).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/loteamentos/{id}/details", "issue": "Backend aceita specs com shape inválido (ex.: correcao/juros/balao como dict em vez de string). Isso quebra posteriormente _lot_specs_to_text (TypeError: unhashable type: 'dict' → 500 em /ai e /generate-copy). Sugestão: validar specs com Pydantic ou normalizar strings esperadas antes de persistir, para blindar contra payloads mal-formados (ex.: via import antigo ou terceiros)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase9_e2e.py",
+    "/app/test_reports/pytest/iter12.xml"
+  ],
+  "action_items": [
+    "(Opcional) Endurecer PUT /loteamentos/{id}/details validando o shape de specs.comercial (correcao/juros/balao devem ser strings), para evitar que um payload mal-formado derrube /ai e /generate-copy com 500. _lot_specs_to_text deveria também fazer coerção segura (ex.: str(c['correcao']) if isinstance(...)) para não quebrar."
+  ],
+  "critical_code_review_comments": [
+    "server.py tem 3291 linhas em um único arquivo. Recomendado quebrar em módulos (routers: /sales, /loteamentos, /appointments, /export, /ai, /auth) para manutenção.",
+    "_lot_specs_to_text acessa c['correcao']/c['juros']/c['balao'] como string sem defesa — qualquer payload inesperado causa 500 em /ai e /generate-copy. Validar/coerção obrigatória.",
+    "Appointments: _appt_scope filtra por owner_id para corretor e abre para master — correto. PATCH /done aceita body opcional com default True — OK.",
+    "Export: _select_columns intersecta com EXPORT_COLUMNS e fallback para all cols — robusto. Separador '||' é incomum (padrão seria vírgula) mas documentado.",
+    "CelebrationDialog funciona 100% com dados completos; já tem data-testid=celebration-broker/vgv/share-btn/download-btn/close/sound-btn.",
+    "LoteamentoDetailsDialog: data-testids lot-tab-dados/galeria/ia + lot-ai-input/send/msg-i presentes e funcionais; abas renderizam."
+  ],
+  "updated_files": ["/app/backend/tests/test_phase9_e2e.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Master: cookie session_token=qa_session_vinicius_001 (ou Authorization: Bearer para API). Corretor: carlos.teste@brilhantes.com / 12345678900.",
+  "seed_data_creation": "Teste criou 4 vendas TEST_* e 1 appointment TEST_UI_Appt via UI/pytest — todos deletados ao final (0 TEST_* restantes). Loteamento lot_9715a2786e (Casa Praia Grande) teve specs restaurados ao estado válido original após teste de PUT.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Para rodar: pytest /app/backend/tests/test_phase9_e2e.py -v -o addopts=''. Para UI master-side use cookie 'session_token' com valor 'qa_session_vinicius_001' injetado via playwright context.add_cookies ANTES do goto. SaleFormDialog usa testids com sufixo -input nos campos quadra/lote (sale-form-quadra-input, sale-form-lote-input), não os prefixos do spec. TeamDialog aba 'corretores' é default (não tem data-testid tab-corretores) — tab-ranking-<userid> está nela; para testar ranking toggles pela UI, não clicar tab-loteamentos primeiro. Agenda header no gestor abre AgendaDialog igual ao corretor (mesmo data-testid=agenda-dialog). CurrencyInput: usar .type() com dígitos (ex.: '25000000') resulta em display '250.000,00' e sale_value numérico 250000.0 enviado ao backend.",
+  "rca of the issue": "N/A — todas as features da Fase 9 funcionando end-to-end. Único achado é defensivo: shape de specs em PUT /loteamentos/{id}/details não é validado; payload mal-formado deixa a base em estado que faz /ai e /generate-copy retornarem 500. Durante o teste, isso foi observado por envio incorreto no pytest (dict em vez de string) — já corrigido no teste e specs restaurados no banco."
+}

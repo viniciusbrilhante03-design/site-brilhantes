@@ -355,7 +355,22 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
 - Testado (curl): specs salvam (tipo/infra/updated); IA deriva "0,5% embutidos → Tabela Price, IPCA anual"; copy gerada
   coerente; mapeamento mapeou 9/9 colunas (Empreendimento→Loteamento, CPF→CPF, Nascimento→Data de nascimento...).
   UI (screenshot gestor): formulário estruturado carregando valores, 5 infra marcadas, seções e condicionais OK.
-- PENDENTE: FASE 9 (testes finais E2E). REPUBLICAR p/ produção.
+- CONTINUA NA ITERAÇÃO 31 (Galeria, Copy por canal e Fase 9).
+
+### Iteração 31 (2026-06 fork) — Galeria + Copy por canal + Mapeamento IA + FASE 9 E2E ✅
+**Galeria do loteamento (fotos/plantas):** coleção `lot_images` (base64, mesmo padrão dos anexos). Rotas POST/GET
+  `/loteamentos/{id}/images` (upload multipart com `type` foto/planta e `caption` via Form), GET `/loteamentos/images/{id}/raw`
+  (serve bytes, auth por cookie), PATCH/DELETE. Frontend `LoteamentoGallery.jsx` (aba Galeria): upload múltiplo com
+  compressão client-side (max 1600px), grade de thumbs, tipo + descrição (salva no blur), excluir. Descrições alimentam a IA
+  e as copys (`_lot_gallery_text` entra no contexto de `/ai` e `/generate-copy`).
+**Copy por canal:** `/generate-copy?channel=stories|feed|whatsapp` com prompts distintos (`_COPY_CHANNELS`); WhatsApp inclui o
+  contato do corretor logado. UI: 3 botões Stories/Feed/WhatsApp + Copiar.
+**FASE 9 — E2E completo:** testing_agent 100% (backend 24/24 pytest em `tests/test_phase9_e2e.py` + UI). Cobriu vendas+comemoração,
+  ranking opt-out, agenda CRUD, WhatsApp aniversário, export por colunas, specs estruturado, copy 3 canais, galeria, IA
+  (responde/recusa), importação. Dados de teste limpos.
+**Hardening:** `_lot_specs_to_text` coage `isinstance(str)` em tipo/status/correção/periodicidade — specs malformado (dict em vez
+  de string) não derruba mais `/ai` nem `/generate-copy` (antes 500 → agora 200). Validado por curl.
+- TUDO PRONTO (Fases 1–9). PENDENTE APENAS: **REPUBLICAR** p/ produção (inclui a chave OpenAI no .env de produção).
 
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.

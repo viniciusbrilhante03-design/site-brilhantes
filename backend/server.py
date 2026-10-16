@@ -650,8 +650,9 @@ def _lot_specs_to_text(doc: dict) -> str:
                           ("qtd_quadras", "Quantidade de quadras", "")]:
         if t.get(key):
             tech.append(f"{lbl}: {t[key]}")
-    if t.get("tipo"):
-        tech.append(f"Tipo: {_LOT_TIPO.get(t['tipo'], t['tipo'])}")
+    tipo = t.get("tipo")
+    if isinstance(tipo, str) and tipo:
+        tech.append(f"Tipo: {_LOT_TIPO.get(tipo, tipo)}")
     if t.get("liberacao_pct"):
         tech.append(f"Liberação de construção: {t['liberacao_pct']}% do lote pago")
     if t.get("prazo_construcao"):
@@ -669,8 +670,9 @@ def _lot_specs_to_text(doc: dict) -> str:
         out.append("INFRAESTRUTURA:\n" + ", ".join(items))
 
     o = s.get("obra") or {}
-    if o.get("status"):
-        obra = [f"Status: {_LOT_STATUS.get(o['status'], o['status'])}"]
+    status = o.get("status")
+    if isinstance(status, str) and status:
+        obra = [f"Status: {_LOT_STATUS.get(status, status)}"]
         if o.get("percentual"):
             obra.append(f"Percentual: {o['percentual']}%")
         if o.get("previsao"):
@@ -704,12 +706,14 @@ def _lot_specs_to_text(doc: dict) -> str:
     if c.get("valor_parcela_inicial"):
         com.append(f"Valor inicial da parcela: {c['valor_parcela_inicial']}")
     com.append(f"Financiamento: {c.get('financiamento') or 'Próprio do loteamento'}")
-    if c.get("correcao"):
-        corr = c.get("correcao_outro") if c["correcao"] == "outro" else _LOT_CORRECAO.get(c["correcao"], c["correcao"])
+    corr_key = c.get("correcao")
+    if isinstance(corr_key, str) and corr_key:
+        corr = c.get("correcao_outro") if corr_key == "outro" else _LOT_CORRECAO.get(corr_key, corr_key)
         if corr:
             per = ""
-            if c.get("periodicidade"):
-                per = c.get("periodicidade_outra") if c["periodicidade"] == "outra" else _LOT_PERIOD.get(c["periodicidade"], c["periodicidade"])
+            per_key = c.get("periodicidade")
+            if isinstance(per_key, str) and per_key:
+                per = c.get("periodicidade_outra") if per_key == "outra" else _LOT_PERIOD.get(per_key, per_key)
             com.append(f"Correção monetária: {corr}" + (f" ({per})" if per else ""))
     if c.get("juros") == "sem":
         com.append("Juros: Sem juros")
