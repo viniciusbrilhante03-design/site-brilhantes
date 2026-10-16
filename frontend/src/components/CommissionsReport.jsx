@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import api from "@/lib/api";
@@ -202,9 +202,9 @@ export default function CommissionsReport({ canEdit }) {
             ) : rows.length === 0 ? (
               <tr><td colSpan={visible.length} className="px-3 py-8 text-center text-muted-foreground">Nenhuma comissão no período.</td></tr>
             ) : groups.map((g) => (
-              <>
+              <Fragment key={g.key ?? "__all__"}>
                 {g.key !== null && (
-                  <tr key={`h-${g.key}`} className="bg-primary/5">
+                  <tr className="bg-primary/5">
                     <td colSpan={visible.length} className="px-2.5 py-1.5 font-semibold text-xs">
                       {g.key} · {g.rows.length} venda(s) · {brl(g.rows.reduce((s, r) => s + (r["Comissão"] || 0), 0))}
                     </td>
@@ -232,7 +232,7 @@ export default function CommissionsReport({ canEdit }) {
                     })}
                   </tr>
                 ))}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

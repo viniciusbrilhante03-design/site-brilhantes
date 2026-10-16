@@ -18,7 +18,7 @@ import {
 import { brl, formatDateBR } from "@/lib/format";
 import GroupsManager from "@/components/GroupsManager";
 import LoteamentoDetailsDialog from "@/components/LoteamentoDetailsDialog";
-import { Users, Copy, Phone, Mail, IdCard, Link2, History, Camera, Plus, Pencil, Trash2, ArrowLeft, KeyRound, ScrollText, ArrowRightLeft, FilePlus2, FileX2, Sparkles } from "lucide-react";
+import { Users, Copy, Phone, Mail, IdCard, Link2, History, Camera, Plus, Pencil, Trash2, ArrowLeft, KeyRound, ScrollText, ArrowRightLeft, FilePlus2, FileX2, Sparkles, Fingerprint, Cake } from "lucide-react";
 
 function fileToDataURL(file, max = 256) {
   return new Promise((resolve, reject) => {
@@ -39,7 +39,7 @@ function fileToDataURL(file, max = 256) {
   });
 }
 
-const emptyC = { name: "", war_name: "", email: "", phone: "", creci: "", picture: "", active: true };
+const emptyC = { name: "", war_name: "", email: "", phone: "", creci: "", cpf: "", birthdate: "", picture: "", active: true };
 
 function CorretorForm({ initial, onCancel, onSaved }) {
   const qc = useQueryClient();
@@ -91,6 +91,10 @@ function CorretorForm({ initial, onCancel, onSaved }) {
         <div className="space-y-1.5"><Label>E-mail (login)</Label><Input data-testid="corretor-email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="email@exemplo.com" /></div>
         <div className="space-y-1.5"><Label>Telefone</Label><Input data-testid="corretor-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="(00) 00000-0000" /></div>
         <div className="space-y-1.5"><Label>CRECI</Label><Input data-testid="corretor-creci" value={form.creci} onChange={(e) => set("creci", e.target.value)} placeholder="000000-F" /></div>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="space-y-1.5"><Label>CPF</Label><Input data-testid="broker-cpf" value={form.cpf || ""} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
+        <div className="space-y-1.5"><Label>Data de nascimento</Label><Input data-testid="broker-birthdate" type="date" value={form.birthdate || ""} onChange={(e) => set("birthdate", e.target.value)} /></div>
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="outline" onClick={onCancel}>Cancelar</Button>
@@ -192,6 +196,8 @@ export default function TeamDialog({ open, onOpenChange }) {
                         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                           {c.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{c.email}</span>}
                           {c.creci && <span className="flex items-center gap-1"><IdCard className="h-3 w-3" />{c.creci}</span>}
+                          {c.cpf && <span className="flex items-center gap-1" data-testid={`broker-cpf-${c.user_id}`}><Fingerprint className="h-3 w-3" />{c.cpf}</span>}
+                          {c.birthdate && <span className="flex items-center gap-1" data-testid={`broker-birthdate-${c.user_id}`}><Cake className="h-3 w-3" />{formatDateBR(c.birthdate)}</span>}
                           {c.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.phone}</span>}
                         </div>
                         <div className="mt-2 flex items-center gap-3 text-xs">

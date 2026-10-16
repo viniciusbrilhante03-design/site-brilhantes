@@ -1,0 +1,50 @@
+{
+  "summary": "Testadas as 3 entregas desta iteração: (1) Relatório de Comissões (hub Financeiro), (2) CPF/Data de nascimento no cadastro de corretor, (3) anexo de comprovante na baixa de parcela. Backend 13/13 pytest verdes em /app/backend/tests/test_commissions_report.py cobrindo GET /commissions/report (shape {rows,summary,can_edit}), filtros loteamento/corretor/status/year/month, escopo do corretor (can_edit=false), export xlsx (parse openpyxl do header com ?columns=A||B||C) e pdf (%PDF magic), PATCH /sales/{id}/commission master (recalcula commission_net = bruta - desconto, grava discounts tipo nf_boleto e gera audit action='commission_edit'), PATCH corretor retorna 403, POST/PUT /brokers persiste cpf+birthdate, e POST /sales/{id}/installments/{n}/baixa aceita receipt (data URL) + receipt_name. Frontend master: Financeiro → Relatório carrega com todas KPIs (vendas/gerada/recebida/areceber), todos filtros (year/month/loteamento/corretor/status), Agrupar, Colunas (popover abre), export xlsx/pdf e tabela. Edição inline: clicar em % abriu input, Enter salvou e disparou toast 'Comissão atualizada.' (idem para Desc. NF/boleto, revertido para 0). ❌ CRÍTICO: cadastro de corretor na Equipe (TeamDialog) NÃO tem campos CPF nem Data de nascimento — main agent adicionou esses campos ao componente BrokersDialog.jsx, que é código morto (não é importado em lugar nenhum do app). O form real que o master usa (TeamDialog > CorretorForm) continua apenas com war_name/name/email/phone/creci. Além disso, backend POST/PUT /corretores também NÃO persiste cpf nem birthdate (apenas /brokers persiste).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/corretores + PUT /api/corretores/{owner_id}", "issue": "Não aceita/persiste os campos cpf e birthdate. CorretorProfile (model) e os handlers ignoram esses campos — o payload do form passa a ser {name,war_name,email,phone,creci,picture,active} apenas. A rota /api/brokers (que persiste cpf/birthdate corretamente, 100% nos testes) NÃO é usada pelo frontend Equipe (TeamDialog chama /corretores).", "priority": "CRITICAL"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TeamDialog.jsx > CorretorForm", "issue": "Form de cadastro/edição de corretor (Equipe → Novo corretor) não possui inputs de CPF nem Data de nascimento. Os data-testids broker-cpf e broker-birthdate exigidos pelo spec existem apenas em BrokersDialog.jsx — componente que não é renderizado por nenhuma tela do app (busca por 'BrokersDialog' no src retorna apenas a própria declaração do componente).", "selector": "[data-testid=\"corretor-form\"]", "priority": "CRITICAL"},
+      {"component": "TeamDialog.jsx > team-card", "issue": "O card do corretor na lista da Equipe não exibe CPF nem data de nascimento. Não há data-testid broker-cpf-<id> nem broker-birthdate-<id>.", "selector": "[data-testid^=\"team-card-\"]", "priority": "CRITICAL"},
+      {"component": "CommissionsReport.jsx", "issue": "React warning: 'Each child in a list should have a unique key prop' no render do CommissionsReport (console warning, não quebra UX mas é poluição de log).", "selector": "[data-testid=\"report-table\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Cadastro de corretor (Equipe)", "issue": "Mesmo que o form tivesse os campos, backend POST/PUT /corretores não aceita cpf/birthdate — ambos (frontend form e backend handler) precisam ser atualizados para fechar a feature.", "affected_selectors": ["[data-testid=\"corretor-form\"]", "[data-testid=\"corretor-save-btn\"]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_commissions_report.py",
+    "/app/test_reports/pytest/iter13.xml"
+  ],
+  "action_items": [
+    "Adicionar inputs CPF e Data de nascimento no CorretorForm de TeamDialog.jsx com data-testid=broker-cpf e data-testid=broker-birthdate (OU usar os nomes corretor-cpf/corretor-birthdate; o spec pediu broker-*).",
+    "Exibir CPF e Data de nascimento no card da lista de corretores em TeamDialog.jsx com data-testid=broker-cpf-<user_id> e data-testid=broker-birthdate-<user_id>.",
+    "Backend: estender model CorretorProfile e handlers POST/PUT /api/corretores para aceitar e persistir cpf e birthdate (grep CorretorProfile em server.py).",
+    "Avaliar se BrokersDialog.jsx deve ser removido ou integrado — hoje é dead code. Se a intenção era substituir a aba 'Corretores' do TeamDialog pelo BrokersDialog, trocar o conteúdo da aba.",
+    "Corrigir warning React de key em CommissionsReport (adicionar key único ao map que gera os <tr>/<td> faltantes).",
+    "(Opcional) revisar: quando commission_rate=0 em PATCH /sales/{id}/commission, _compute_commission mantém commission_value anterior (documentado como quirk pré-existente)."
+  ],
+  "critical_code_review_comments": [
+    "BrokersDialog.jsx está completamente desacoplado da UI real — nenhum import. Isso provavelmente é fruto de um refactor incompleto. Devia ter sido TeamDialog (aba Corretores) o alvo da feature.",
+    "server.py agora com 3722 linhas. Priorizar quebrar em routers (/sales, /commissions, /brokers, /corretores, /auth, /ai, /export, /loteamentos) — manutenção fica inviável acima de 3k linhas.",
+    "Dualidade /brokers vs /corretores é confusa — ambos existem e representam o mesmo conceito funcional (corretor). A entrega atual expõe isso: feature foi para /brokers mas UI consome /corretores. Unificar modelo (CorretorProfile ⟵ BrokerBase) resolve de vez.",
+    "CommissionsReport: edição inline funciona bem, mas 'Enter salvar' sem indicador visível de loading pode confundir — ok como quick-edit, mas considerar spinner inline.",
+    "PATCH /sales/{id}/commission: audit log inclui o payload completo do sale como before/after (via **sale, **upd) — pode ficar pesado se sales ganharem anexos grandes; considerar salvar apenas diff.",
+    "_report_row: fallback de commission_net quando lista de discounts é vazia soma 'discounts' mas depois já computa gross-net. OK para o caso atual, mas comentar a semântica (bruta = commission_value * frac; líquida já inclui proporcionalidade do parceiro) para evitar confusão futura."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_commissions_report.py (novo)"
+  ],
+  "success_rate": {"backend": "100% (13/13 pytest no escopo); funcional parcial — POST/PUT /corretores sem suporte a cpf/birthdate", "frontend": "~60% — Relatório master 100%, edição inline 100%, mas cadastro de corretor com CPF/birthdate 0% (campos ausentes do form real)"},
+  "test_credentials": "Master: cookie session_token=qa_session_vinicius_001 (Bearer para API). Corretor: carlos.teste@brilhantes.com / 12345678900.",
+  "seed_data_creation": "Durante os testes: 1 broker 'TEST_Corretor_RelReport' criado e deletado via /brokers; 1 sale 'TEST_RelReport_Lot' criada em 2026-01-15 (R$100k, 2 parcelas) para testar baixa com comprovante — deletada ao final via DELETE /sales/{id}. PATCH /sales/{id}/commission alterou e reverteu rate/desc de 1 sale existente (sale_eb16d620bc77: rate 5→5 por fim; desc nf_boleto zerada) — rows no relatório podem mostrar 1 linha com desconto 0 extra na coleção discounts (apenas registro 'nf_boleto' com value=0, inofensivo).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Testes backend em /app/backend/tests/test_commissions_report.py (rodar com -o addopts='' pois pytest.ini do backend tem addopts específicos). Executável independente do resto da suite. Para UI master, injetar cookie session_token=qa_session_vinicius_001 ANTES do goto(/dashboard). Report default abre na aba Relatório — testids: report-kpi-{vendas,gerada,recebida,areceber}, report-filter-{year,month,loteamento,corretor,status}, report-group-toggle, report-cols-btn+report-cols-popover, report-export-{xlsx,pdf}, report-table, por linha report-row-<saleId>, report-edit-{rate,disc}-<saleId>, report-edit-input-<saleId>. Toast de sucesso é 'Comissão atualizada.' (sonner). FORA DO ESCOPO ATUAL: BrokersDialog.jsx é dead code — testids broker-cpf/broker-birthdate NÃO existem na UI em uso. Equipe hub usa TeamDialog.jsx > CorretorForm (data-testid=corretor-form) e endpoint /api/corretores.",
+  "rca of the issue": "Main agent implementou cpf/birthdate em dois lugares: (a) backend /api/brokers + model BrokerBase; (b) componente BrokersDialog.jsx. Problema: a UI real do app usa TeamDialog.jsx + endpoint /api/corretores (model CorretorProfile), não /api/brokers e não BrokersDialog. Portanto a entrega está disfuncional end-to-end apesar de os endpoints /brokers funcionarem isoladamente. Fix: adicionar campos no CorretorProfile model, nas rotas POST/PUT /corretores, no form de TeamDialog e no card do corretor. Alternativa: trocar o conteúdo da aba 'Corretores' do TeamDialog para renderizar BrokersDialog e migrar o endpoint que a UI chama para /brokers (maior refactor)."
+}

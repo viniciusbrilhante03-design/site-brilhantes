@@ -249,6 +249,8 @@ class CorretorProfile(BaseModel):
     email: Optional[str] = ""
     phone: Optional[str] = ""
     creci: Optional[str] = ""
+    cpf: Optional[str] = ""
+    birthdate: Optional[str] = ""   # YYYY-MM-DD
     picture: Optional[str] = ""
     active: bool = True
 
@@ -3597,6 +3599,7 @@ async def create_corretor(data: CorretorProfile, user: dict = Depends(require_ma
     doc = {
         "user_id": uid, "email": email, "name": data.name or "", "war_name": data.war_name or "",
         "phone": data.phone or "", "creci": data.creci or "", "picture": data.picture or "",
+        "cpf": data.cpf or "", "birthdate": data.birthdate or "",
         "role": "corretor", "active": data.active, "token_version": 0, "manual": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -3616,6 +3619,7 @@ async def update_corretor(owner_id: str, data: CorretorProfile, user: dict = Dep
             raise HTTPException(status_code=400, detail="E-mail já cadastrado por outro usuário")
     upd = {"name": data.name or "", "war_name": data.war_name or "", "email": email,
            "phone": data.phone or "", "creci": data.creci or "", "picture": data.picture or "",
+           "cpf": data.cpf or "", "birthdate": data.birthdate or "",
            "active": data.active}
     await db.users.update_one({"user_id": owner_id}, {"$set": upd})
     return {"ok": True}
