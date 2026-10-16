@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarClock, Plus, Trash2, Check, Pencil, Footprints, Store, PhoneCall, Star, X } from "lucide-react";
+import { CalendarClock, Plus, Trash2, Check, Pencil, Footprints, Store, PhoneCall, Star, X, RefreshCw, Link2, Unlink, Loader2, CheckCircle2 } from "lucide-react";
 
 const TYPES = [
   { v: "visita", label: "Visita", icon: Footprints },
@@ -19,6 +19,85 @@ const TYPES = [
 ];
 const typeMeta = (t) => TYPES.find((x) => x.v === t) || TYPES[3];
 const empty = { title: "", type: "visita", when: "", client_name: "", notes: "", done: false };
+
+function GoogleCalBar() {
+  const qc = useQueryClient();
+  const [connecting, setConnecting] = useState(false);
+  const statusQ = useQuery({ queryKey: ["calendar-status"], queryFn: async () => (await api.get("/calendar/status")).data });
+  const st = statusQ.data || {};
+
+  const connect = async () => {
+    try {
+      setConnecting(true);
+      const { authorization_url } = (await api.get("/oauth/calendar/login")).data;
+      const popup = window.open(authorization_url, "gcal", "width=520,height=680");
+      const timer = setInterval(async () => {
+        try {
+          const s = (await api.get("/calendar/status")).data;
+          if (s.connected) {
+            clearInterval(timer);
+            setConnecting(false);
+            try { popup && popup.close(); } catch { /* noop */ }
+            qc.invalidateQueries({ queryKey: ["calendar-status"] });
+            toast.success("Google Agenda conectada!");
+          } else if (popup && popup.closed) {
+            clearInterval(timer);
+            setConnecting(false);
+          }
+        } catch { /* keep polling */ }
+      }, 2000);
+      setTimeout(() => { clearInterval(timer); setConnecting(false); }, 180000);
+    } catch {
+      setConnecting(false);
+      toast.error("Não foi possível iniciar a conexão com o Google.");
+    }
+  };
+
+  const syncMut = useMutation({
+    mutationFn: () => api.post("/calendar/sync"),
+    onSuccess: (r) => {
+      const c = r.data?.counts || {};
+      toast.success(`Sincronizado! ${c.compromissos || 0} compromissos, ${c.aniversarios || 0} aniversários, ${c.vencimentos || 0} vencimentos.`);
+    },
+    onError: () => toast.error("Erro ao sincronizar com o Google Agenda."),
+  });
+  const disconnectMut = useMutation({
+    mutationFn: () => api.post("/calendar/disconnect"),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["calendar-status"] }); toast.success("Google Agenda desconectada."); },
+  });
+
+  if (!st.configured) return null;
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/30 p-3 flex flex-wrap items-center gap-2" data-testid="gcal-bar">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="h-9 w-9 rounded-lg bg-[hsl(var(--gold)/0.15)] text-[hsl(var(--gold))] flex items-center justify-center shrink-0"><CalendarClock className="h-5 w-5" /></div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">Google Agenda</div>
+          {st.connected ? (
+            <div className="text-xs text-[hsl(var(--emerald))] flex items-center gap-1 truncate"><CheckCircle2 className="h-3 w-3" /> Conectada {st.email ? `· ${st.email}` : ""}</div>
+          ) : (
+            <div className="text-xs text-muted-foreground">Sincronize vencimentos, aniversários e compromissos.</div>
+          )}
+        </div>
+      </div>
+      {st.connected ? (
+        <div className="flex gap-2">
+          <Button size="sm" className="h-8 gap-1.5" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} data-testid="gcal-sync">
+            {syncMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Sincronizar agora
+          </Button>
+          <Button size="sm" variant="ghost" className="h-8 gap-1.5 text-destructive" onClick={() => disconnectMut.mutate()} data-testid="gcal-disconnect">
+            <Unlink className="h-4 w-4" /> Desconectar
+          </Button>
+        </div>
+      ) : (
+        <Button size="sm" className="h-8 gap-1.5" disabled={connecting} onClick={connect} data-testid="gcal-connect">
+          {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />} {connecting ? "Conectando..." : "Conectar Google Agenda"}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 function fmtWhen(iso) {
   if (!iso) return "";
@@ -147,6 +226,7 @@ export default function AgendaDialog({ open, onOpenChange, clients = [] }) {
           </div>
         ) : (
           <>
+            <GoogleCalBar />
             <div className="flex justify-end">
               <Button data-testid="btn-new-appt" onClick={() => { setForm(empty); setEditId(null); setView("form"); }}>
                 <Plus className="h-4 w-4 mr-1" /> Novo compromisso

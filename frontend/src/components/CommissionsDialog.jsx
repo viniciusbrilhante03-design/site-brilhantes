@@ -5,8 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { brl, formatDateBR } from "@/lib/format";
-import { Wallet, CalendarClock, Printer, Table2 } from "lucide-react";
+import { Wallet, CalendarClock, Printer, Table2, Users } from "lucide-react";
 import CommissionsReport from "@/components/CommissionsReport";
+import CommissionsClients from "@/components/CommissionsClients";
 
 const STCLS = { pago: "bg-[hsl(var(--emerald))] text-white", parcial: "bg-[hsl(var(--amber))] text-white", vencida: "bg-[hsl(var(--rose))] text-white", pendente: "bg-muted text-foreground" };
 
@@ -30,15 +31,20 @@ export default function CommissionsDialog({ open, onOpenChange, isMaster = false
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto" data-testid="commissions-dialog">
         <DialogHeader>
           <DialogTitle className="font-heading text-xl flex items-center gap-2"><Wallet className="h-5 w-5" /> Financeiro</DialogTitle>
-          <DialogDescription>Extrato, relatório de comissões e agenda de recebimentos — somente a sua base de vendas.</DialogDescription>
+          <DialogDescription>Clientes, extrato, relatório de comissões e agenda de recebimentos.</DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="relatorio">
+        <Tabs defaultValue="clientes">
           <TabsList>
+            <TabsTrigger value="clientes" data-testid="tab-clientes"><Users className="h-4 w-4 mr-1" /> Clientes</TabsTrigger>
             <TabsTrigger value="relatorio" data-testid="tab-relatorio"><Table2 className="h-4 w-4 mr-1" /> Relatório</TabsTrigger>
             <TabsTrigger value="extrato" data-testid="tab-extrato">Extrato</TabsTrigger>
             <TabsTrigger value="agenda" data-testid="tab-agenda"><CalendarClock className="h-4 w-4 mr-1" /> Agenda</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="clientes" className="mt-3" data-testid="clientes-content">
+            <CommissionsClients isMaster={isMaster} />
+          </TabsContent>
 
           <TabsContent value="relatorio" className="mt-3" data-testid="relatorio-content">
             <CommissionsReport canEdit={isMaster} />

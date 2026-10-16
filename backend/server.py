@@ -2045,6 +2045,176 @@ async def commissions_agenda(user: dict = Depends(get_current_user)):
     return items
 
 
+# ---------------- Financeiro por CLIENTE (fluxo completo + baixa/edição) ----------------
+def _client_sale_breakdown(s: dict, user: dict) -> dict:
+    """Detalhamento de uma venda para a visão do cliente (parcela a parcela)."""
+    frac = _sale_comm_frac(s, user)
+    insts = s.get("installments") or []
+    insts_out, gerada, recebida, a_receber, vencida = [], 0.0, 0.0, 0.0, 0.0
+    for inst in insts:
+        _recompute_inst(inst)
+        net = round((inst.get("net") or 0) * frac, 2)
+        paid = round((inst.get("paid") or 0) * frac, 2)
+        saldo = round(net - paid, 2)
+        gerada += net
+        recebida += paid
+        a_receber += saldo
+        if inst.get("status") == "vencida":
+            vencida += saldo
+        insts_out.append({
+            "number": inst.get("number"), "due_date": inst.get("due_date"),
+            "value": inst.get("value"), "gross": inst.get("gross"),
+            "discount": inst.get("discount"), "net": net, "paid": paid,
+            "saldo": saldo, "status": inst.get("status"),
+            "payments": inst.get("payments") or [],
+        })
+    if not insts:
+        cv = round((s.get("commission_value", 0) or 0) * frac, 2)
+        gerada = cv
+        if s.get("commission_received"):
+            recebida = cv
+        else:
+            a_receber = cv
+    return {
+        "sale_id": s.get("id"), "property_name": s.get("property_name"),
+        "quadra": s.get("quadra"), "lote": s.get("lote"),
+        "broker_name": s.get("broker_name"), "sale_date": s.get("sale_date"),
+        "sale_value": s.get("sale_value"), "commission_rate": s.get("commission_rate"),
+        "commission_value": round((s.get("commission_value", 0) or 0) * frac, 2),
+        "parcelado": bool(insts),
+        "commission_received": bool(s.get("commission_received")),
+        "installments": insts_out,
+        "totals": {"gerada": round(gerada, 2), "recebida": round(recebida, 2),
+                   "a_receber": round(a_receber, 2), "vencida": round(vencida, 2),
+                   "parcelas": len(insts), "pendentes": sum(1 for i in insts_out if i["status"] != "pago")},
+    }
+
+
+@api_router.get("/commissions/clients")
+async def commissions_clients(q: Optional[str] = None, user: dict = Depends(get_current_user)):
+    """Lista de clientes com resumo financeiro — busca por nome/CPF. Escopo por usuário."""
+    sales = await list_sales(user=user)
+    agg: dict = {}
+    for s in sales:
+        if s.get("status") == "cancelled":
+            continue
+        name = (s.get("client_name") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        b = _client_sale_breakdown(s, user)
+        c = agg.setdefault(key, {"name": name, "cpf": s.get("client_cpf") or "",
+                                 "phone": s.get("client_phone") or "", "birthdate": s.get("client_birthdate") or "",
+                                 "vendas": 0, "gerada": 0.0, "recebida": 0.0, "a_receber": 0.0,
+                                 "vencida": 0.0, "parcelas_pendentes": 0, "proximo_venc": None})
+        c["vendas"] += 1
+        c["gerada"] += b["totals"]["gerada"]
+        c["recebida"] += b["totals"]["recebida"]
+        c["a_receber"] += b["totals"]["a_receber"]
+        c["vencida"] += b["totals"]["vencida"]
+        c["parcelas_pendentes"] += b["totals"]["pendentes"]
+        if not c["cpf"] and s.get("client_cpf"):
+            c["cpf"] = s.get("client_cpf")
+        for i in b["installments"]:
+            if i["status"] != "pago" and i.get("due_date"):
+                if not c["proximo_venc"] or i["due_date"] < c["proximo_venc"]:
+                    c["proximo_venc"] = i["due_date"]
+    out = list(agg.values())
+    if q and q.strip():
+        ql = q.strip().lower()
+        qd = _only_digits(q)
+        out = [c for c in out if ql in c["name"].lower() or (qd and qd in _only_digits(c.get("cpf") or ""))]
+    for c in out:
+        for k in ["gerada", "recebida", "a_receber", "vencida"]:
+            c[k] = round(c[k], 2)
+    out.sort(key=lambda c: c["name"].lower())
+    return out
+
+
+@api_router.get("/commissions/client-detail")
+async def commissions_client_detail(name: str, cpf: Optional[str] = None,
+                                    user: dict = Depends(get_current_user)):
+    """Fluxo completo de um cliente: todas as vendas e parcelas linha a linha."""
+    sales = await list_sales(user=user)
+    nl = (name or "").strip().lower()
+    qd = _only_digits(cpf) if cpf else ""
+    out = []
+    for s in sales:
+        if s.get("status") == "cancelled":
+            continue
+        if (s.get("client_name") or "").strip().lower() != nl:
+            continue
+        sd = _only_digits(s.get("client_cpf") or "")
+        if qd and sd and sd != qd:
+            continue
+        out.append(_client_sale_breakdown(s, user))
+    out.sort(key=lambda b: b.get("sale_date") or "", reverse=True)
+    totals = {k: round(sum(b["totals"][k] for b in out), 2)
+              for k in ["gerada", "recebida", "a_receber", "vencida"]}
+    totals["parcelas_pendentes"] = sum(b["totals"]["pendentes"] for b in out)
+    return {"client": {"name": name, "cpf": cpf or ""}, "sales": out, "totals": totals,
+            "can_edit": user.get("role") == "master"}
+
+
+@api_router.patch("/sales/{sale_id}/installments/{number}/edit")
+async def edit_installment(sale_id: str, number: int, request: Request, user: dict = Depends(require_master)):
+    """Edita valor/vencimento/desconto de uma parcela (somente gestor, com auditoria)."""
+    sale = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Venda não encontrada")
+    body = await request.json()
+    insts = sale.get("installments", [])
+    target = next((i for i in insts if i["number"] == number), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Parcela não encontrada")
+    old = {"value": target.get("value"), "due_date": target.get("due_date")}
+    if body.get("due_date") is not None:
+        target["due_date"] = body.get("due_date")
+    if body.get("value") is not None:
+        v = float(body.get("value") or 0)
+        target["value"] = v
+        target["gross"] = v
+    if body.get("discount") is not None:
+        target["discount"] = float(body.get("discount") or 0)
+    _recompute_inst(target)
+    await db.sales.update_one({"id": sale_id}, {"$set": {"installments": insts}})
+    await _audit("installment_edit", sale, user,
+                 detail=f"Parcela {number}: valor R$ {old['value']}→R$ {target.get('value')} · "
+                        f"venc {old['due_date']}→{target.get('due_date')}")
+    return await db.sales.find_one({"id": sale_id}, {"_id": 0})
+
+
+@api_router.post("/commissions/upload-receipt")
+async def upload_commission_receipt(file: UploadFile = File(...), user: dict = Depends(require_master)):
+    """Upload de comprovante de pagamento (comissão/baixa). Retorna URL de download."""
+    content = await file.read()
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Arquivo muito grande (máx. 25 MB).")
+    ext = (file.filename or "comprovante").rsplit(".", 1)[-1].lower()[:8]
+    path = f"{_APP_NS}/receipts/{uuid.uuid4().hex}.{ext}"
+    res = _put_object(path, content, file.content_type or "application/octet-stream")
+    rid = f"rec_{uuid.uuid4().hex[:10]}"
+    await db.comm_receipts.insert_one({
+        "id": rid, "storage_path": res["path"],
+        "content_type": file.content_type or "application/octet-stream",
+        "filename": file.filename or "comprovante",
+        "created_at": datetime.now(timezone.utc).isoformat()})
+    api_base = (os.environ.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
+    return {"id": rid, "name": file.filename or "comprovante",
+            "url": f"/api/commissions/receipts/{rid}/download"}
+
+
+@api_router.get("/commissions/receipts/{rid}/download")
+async def download_commission_receipt(rid: str, user: dict = Depends(get_current_user)):
+    d = await db.comm_receipts.find_one({"id": rid}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Comprovante não encontrado")
+    data, ct = _get_object(d["storage_path"])
+    fn = d.get("filename") or "comprovante"
+    return Response(content=data, media_type=d.get("content_type") or ct,
+                    headers={"Content-Disposition": f'inline; filename="{fn}"'})
+
+
 @api_router.post("/sales/{sale_id}/transfer")
 async def transfer_sale(sale_id: str, request: Request, user: dict = Depends(require_master)):
     body = await request.json()
@@ -4098,6 +4268,193 @@ async def history(user: dict = Depends(get_current_user)):
     docs = await db.sales_history.find(q, {"_id": 0}).to_list(500)
     docs.sort(key=lambda d: d.get("deleted_at", ""), reverse=True)
     return docs
+
+
+# ---------------- Google Calendar (OAuth por usuário: gestor e corretor) ----------------
+from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request as GoogleRequest
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from fastapi.responses import RedirectResponse
+
+GCAL_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GCAL_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GCAL_REDIRECT = f"{FRONTEND_URL}/api/oauth/calendar/callback"
+GCAL_SCOPES = ["https://www.googleapis.com/auth/calendar"]
+
+
+def _gcal_flow(state=None):
+    return Flow.from_client_config({"web": {
+        "client_id": GCAL_CLIENT_ID, "client_secret": GCAL_CLIENT_SECRET,
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token"}},
+        scopes=GCAL_SCOPES, redirect_uri=GCAL_REDIRECT, state=state)
+
+
+async def _gcal_creds(user_id: str):
+    u = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    tok = (u or {}).get("google_calendar")
+    if not tok or not tok.get("refresh_token"):
+        return None
+    creds = Credentials(token=tok.get("access_token"), refresh_token=tok.get("refresh_token"),
+                        token_uri="https://oauth2.googleapis.com/token",
+                        client_id=GCAL_CLIENT_ID, client_secret=GCAL_CLIENT_SECRET, scopes=GCAL_SCOPES)
+    try:
+        if not creds.valid:
+            creds.refresh(GoogleRequest())
+            await db.users.update_one({"user_id": user_id}, {"$set": {"google_calendar.access_token": creds.token}})
+    except Exception as e:
+        logger.warning(f"gcal refresh failed: {e}")
+        return None
+    return creds
+
+
+@api_router.get("/oauth/calendar/login")
+async def gcal_login(user: dict = Depends(get_current_user)):
+    if not GCAL_CLIENT_ID or not GCAL_CLIENT_SECRET:
+        raise HTTPException(status_code=400, detail="Integração Google Calendar não configurada.")
+    state = secrets.token_urlsafe(24)
+    await db.oauth_states.insert_one({"state": state, "user_id": user["user_id"],
+                                      "created_at": datetime.now(timezone.utc).isoformat()})
+    flow = _gcal_flow(state=state)
+    url, _ = flow.authorization_url(access_type="offline", prompt="consent", include_granted_scopes="true")
+    return {"authorization_url": url}
+
+
+@api_router.get("/oauth/calendar/callback")
+async def gcal_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    dest = f"{FRONTEND_URL}/?calendar="
+    if error or not code or not state:
+        return RedirectResponse(f"{dest}error")
+    st = await db.oauth_states.find_one({"state": state}, {"_id": 0})
+    if not st:
+        return RedirectResponse(f"{dest}error")
+    await db.oauth_states.delete_one({"state": state})
+    try:
+        token_resp = requests.post("https://oauth2.googleapis.com/token", data={
+            "code": code, "client_id": GCAL_CLIENT_ID, "client_secret": GCAL_CLIENT_SECRET,
+            "redirect_uri": GCAL_REDIRECT, "grant_type": "authorization_code"}, timeout=30).json()
+        if "access_token" not in token_resp:
+            logger.warning(f"gcal token error: {token_resp}")
+            return RedirectResponse(f"{dest}error")
+        info = requests.get("https://www.googleapis.com/oauth2/v2/userinfo",
+                            headers={"Authorization": f"Bearer {token_resp['access_token']}"}, timeout=30).json()
+        existing = await db.users.find_one({"user_id": st["user_id"]}, {"_id": 0})
+        prev = (existing or {}).get("google_calendar") or {}
+        await db.users.update_one({"user_id": st["user_id"]}, {"$set": {"google_calendar": {
+            "access_token": token_resp.get("access_token"),
+            "refresh_token": token_resp.get("refresh_token") or prev.get("refresh_token"),
+            "email": info.get("email"), "connected_at": datetime.now(timezone.utc).isoformat()}}})
+    except Exception as e:
+        logger.warning(f"gcal callback failed: {e}")
+        return RedirectResponse(f"{dest}error")
+    return RedirectResponse(f"{dest}connected")
+
+
+@api_router.get("/calendar/status")
+async def gcal_status(user: dict = Depends(get_current_user)):
+    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    tok = (u or {}).get("google_calendar") or {}
+    return {"configured": bool(GCAL_CLIENT_ID and GCAL_CLIENT_SECRET),
+            "connected": bool(tok.get("refresh_token")), "email": tok.get("email")}
+
+
+@api_router.post("/calendar/disconnect")
+async def gcal_disconnect(user: dict = Depends(get_current_user)):
+    await db.users.update_one({"user_id": user["user_id"]}, {"$unset": {"google_calendar": ""}})
+    return {"ok": True}
+
+
+def _gcal_eid(key: str) -> str:
+    return "brl" + hashlib.md5(key.encode()).hexdigest()
+
+
+def _gcal_upsert(service, ev):
+    try:
+        service.events().insert(calendarId="primary", body=ev).execute()
+        return "created"
+    except HttpError as e:
+        if getattr(e, "resp", None) is not None and e.resp.status in (409, 400):
+            eid = ev["id"]
+            service.events().update(calendarId="primary", eventId=eid, body=ev).execute()
+            return "updated"
+        raise
+
+
+@api_router.post("/calendar/sync")
+async def gcal_sync(user: dict = Depends(get_current_user)):
+    creds = await _gcal_creds(user["user_id"])
+    if not creds:
+        raise HTTPException(status_code=400, detail="Conecte sua conta Google primeiro.")
+    service = build("calendar", "v3", credentials=creds, cache_discovery=False)
+    counts = {"compromissos": 0, "aniversarios": 0, "vencimentos": 0}
+    tz = "America/Sao_Paulo"
+    # 1. Compromissos (agenda interna)
+    appts = await db.appointments.find({**_appt_scope(user), "done": {"$ne": True}}, {"_id": 0}).to_list(1000)
+    for a in appts:
+        when = (a.get("when") or "").strip()
+        if not when:
+            continue
+        start = when if len(when) > 10 else when + "T09:00:00"
+        try:
+            sdt = datetime.fromisoformat(start)
+        except Exception:
+            continue
+        edt = sdt + timedelta(hours=1)
+        ev = {"id": _gcal_eid("appt" + a["id"]),
+              "summary": f"[Brilhante] {a.get('title')}",
+              "description": (a.get("notes") or "") + (f"\nCliente: {a['client_name']}" if a.get("client_name") else ""),
+              "start": {"dateTime": sdt.isoformat(), "timeZone": tz},
+              "end": {"dateTime": edt.isoformat(), "timeZone": tz}}
+        try:
+            _gcal_upsert(service, ev)
+            counts["compromissos"] += 1
+        except Exception as e:
+            logger.warning(f"gcal appt fail: {e}")
+    # 2. Aniversários de clientes (evento anual)
+    clients = await list_clients(user=user)
+    year = _br_now().year
+    for c in clients:
+        mmdd = _parse_mmdd(c.get("birthdate"))
+        if not mmdd:
+            continue
+        bmonth, bday = mmdd
+        d = f"{year}-{bmonth:02d}-{bday:02d}"
+        try:
+            dend = (datetime(year, bmonth, bday) + timedelta(days=1)).date().isoformat()
+        except Exception:
+            continue
+        ev = {"id": _gcal_eid("bday" + (c.get("name") or "").lower()),
+              "summary": f"🎂 Aniversário de {c.get('name')}",
+              "description": "Aniversário de cliente — Brilhante's Imóveis",
+              "start": {"date": d}, "end": {"date": dend},
+              "recurrence": ["RRULE:FREQ=YEARLY"]}
+        try:
+            _gcal_upsert(service, ev)
+            counts["aniversarios"] += 1
+        except Exception as e:
+            logger.warning(f"gcal bday fail: {e}")
+    # 3. Vencimentos de parcelas em aberto
+    agenda = await commissions_agenda(user=user)
+    for p in agenda:
+        if not p.get("due_date"):
+            continue
+        try:
+            dd = datetime.fromisoformat(p["due_date"])
+            dend = (dd + timedelta(days=1)).date().isoformat()
+        except Exception:
+            continue
+        ev = {"id": _gcal_eid(f"venc{p['sale_id']}-{p['number']}"),
+              "summary": f"💰 Vencimento: {p.get('property_name')} Parc #{p.get('number')} (R$ {(p.get('saldo') or 0):.2f})",
+              "description": f"Cliente: {p.get('client_name') or '—'} · Corretor: {p.get('broker_name') or '—'}",
+              "start": {"date": p["due_date"]}, "end": {"date": dend}}
+        try:
+            _gcal_upsert(service, ev)
+            counts["vencimentos"] += 1
+        except Exception as e:
+            logger.warning(f"gcal venc fail: {e}")
+    return {"ok": True, "counts": counts}
 
 
 app.include_router(api_router)

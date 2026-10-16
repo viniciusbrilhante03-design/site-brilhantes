@@ -479,6 +479,24 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
   "Perguntas sem resposta" (ARTE 15-16), tela de Configurações OpenAI com troca de chave/modelo/limite/uso (ARTE 17),
   e abas Vídeos/Mapa + "Abas visíveis para corretores" (ARTE 13). **REPUBLICAR** p/ ver no app ao vivo.
 
+### Iteração 35 (2026-06 fork) — Financeiro por Cliente + Google Calendar ✅
+- **Aba "Clientes" no Financeiro** (agora aba inicial do diálogo). Backend:
+  `GET /commissions/clients?q=` (lista agregada por cliente c/ resumo: vendas, parcelas pendentes, a receber, vencida, próx. venc.),
+  `GET /commissions/client-detail?name=&cpf=` (fluxo completo: cada venda + cada parcela linha a linha com net/pago/saldo/status),
+  `PATCH /sales/{id}/installments/{n}/edit` (gestor edita valor/vencimento/desconto — auditado),
+  `POST /commissions/upload-receipt` + `GET /commissions/receipts/{rid}/download` (comprovante via object storage),
+  baixa reaproveita `POST /sales/{id}/installments/{n}/baixa` (valor/data/forma/comprovante/kind=repasse).
+  Front: `CommissionsClients.jsx` — busca, cards de cliente, detalhe com KPIs + tabela por venda, botões Editar/Baixar (só gestor),
+  dialog de baixa com upload de comprovante, lista de comprovantes com link de download. Corretor = somente leitura (edit 403).
+  Validado por curl (edit, baixa parcial, upload+download, 403 corretor) e screenshot.
+- **Google Calendar (OAuth por usuário — gestor e corretor)**: libs google-auth/oauthlib/api-python-client. Chaves em backend/.env
+  (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET). Endpoints: `GET /oauth/calendar/login`, `GET /oauth/calendar/callback`,
+  `GET /calendar/status`, `POST /calendar/disconnect`, `POST /calendar/sync` (push idempotente de compromissos, aniversários
+  anuais e vencimentos de parcelas — event id determinístico via md5). Front: barra "Google Agenda" na `AgendaDialog`
+  (conectar via popup+polling, sincronizar agora, desconectar). Redirect URI: {FRONTEND_URL}/api/oauth/calendar/callback.
+  Validado: status/login-url OK, sync exige conexão (400). **Consentimento real do Google deve ser testado pelo usuário**
+  (precisa estar como "usuário de teste" na tela de consentimento). **REPUBLICAR** p/ produção + adicionar URL de produção no Google Cloud.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.
