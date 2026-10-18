@@ -2,7 +2,9 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FileSpreadsheet, FileText } from "lucide-react";
+import { FileSpreadsheet, FileText, Users } from "lucide-react";
+import { toast } from "sonner";
+import api from "@/lib/api";
 
 export const EXPORT_COLUMNS = [
   "Data", "Loteamento", "Quadra", "Lote", "Cliente", "Corretor",
@@ -20,6 +22,21 @@ export default function ExportDialog({ open, onOpenChange, onExport }) {
   const run = (type) => {
     onExport(type, ordered.length ? ordered : EXPORT_COLUMNS);
     onOpenChange(false);
+  };
+
+  const exportClients = async () => {
+    try {
+      const res = await api.get("/export/backup", { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "backup-brilhantes.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Backup completo gerado!");
+    } catch {
+      toast.error("Erro ao gerar backup.");
+    }
   };
 
   return (
@@ -52,10 +69,17 @@ export default function ExportDialog({ open, onOpenChange, onExport }) {
 
         <div className="flex gap-2 pt-1">
           <Button data-testid="export-run-xlsx" className="flex-1" disabled={!ordered.length} onClick={() => run("xlsx")}>
-            <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Excel (.xlsx)
+            <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Vendas (.xlsx)
           </Button>
           <Button data-testid="export-run-pdf" className="flex-1" variant="outline" disabled={!ordered.length} onClick={() => run("pdf")}>
-            <FileText className="h-4 w-4 mr-1.5" /> PDF
+            <FileText className="h-4 w-4 mr-1.5" /> Vendas (PDF)
+          </Button>
+        </div>
+
+        <div className="pt-2 mt-1 border-t border-border/60">
+          <p className="text-xs text-muted-foreground mb-2">Backup de <strong>todos os dados</strong> (vendas, parcelas, baixas, clientes, corretores, agenda, auditoria) — o que o GitHub não leva.</p>
+          <Button data-testid="export-run-clients" variant="secondary" className="w-full" onClick={exportClients}>
+            <Users className="h-4 w-4 mr-1.5" /> Baixar backup completo (.xlsx)
           </Button>
         </div>
       </DialogContent>

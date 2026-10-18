@@ -3771,6 +3771,70 @@ async def export_xlsx(month: Optional[int] = None, year: Optional[int] = None,
     )
 
 
+@api_router.get("/export/backup")
+async def export_backup(user: dict = Depends(require_master)):
+    """Backup completo (todos os dados que o GitHub não leva) em um Excel multi-abas."""
+    import json as _json
+
+    def _clean(v):
+        if isinstance(v, (dict, list)):
+            return _json.dumps(v, ensure_ascii=False, default=str)
+        return v
+
+    def _df(docs, drop=("_id",)):
+        rows = [{k: _clean(v) for k, v in d.items() if k not in drop} for d in docs]
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+    sales = await list_sales(user=user)
+    parc_rows, pay_rows = [], []
+    for s in sales:
+        for inst in (s.get("installments") or []):
+            _recompute_inst(inst)
+            parc_rows.append({
+                "Cliente": s.get("client_name"), "Loteamento": s.get("property_name"),
+                "Quadra": s.get("quadra"), "Lote": s.get("lote"), "Corretor": s.get("broker_name"),
+                "Parcela": inst.get("number"), "Vencimento": inst.get("due_date"),
+                "Valor": inst.get("value"), "Líquido": inst.get("net"),
+                "Pago": inst.get("paid"), "Saldo": round((inst.get("net") or 0) - (inst.get("paid") or 0), 2),
+                "Status": inst.get("status"),
+            })
+            for p in (inst.get("payments") or []):
+                pay_rows.append({
+                    "Cliente": s.get("client_name"), "Loteamento": s.get("property_name"),
+                    "Parcela": inst.get("number"), "Valor": p.get("amount"), "Data": p.get("date"),
+                    "Forma": p.get("method"), "Tipo": p.get("kind"), "Registrado por": p.get("by"),
+                    "Comprovante": p.get("receipt_name") or ("sim" if p.get("receipt") else ""),
+                })
+
+    clients = await db.clients.find({}, {"_id": 0}).to_list(5000)
+    corretores = await db.users.find({"role": "corretor"}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    audit = await db.sale_audit.find({}, {"_id": 0}).sort("at", -1).to_list(5000)
+    appts = await db.appointments.find({}, {"_id": 0}).to_list(5000)
+    loteamentos = await db.loteamentos.find({}, {"_id": 0}).to_list(2000)
+    goals = await db.goals.find({}, {"_id": 0}).to_list(2000)
+    lote_rows = [{"Nome": l.get("property_name"), "Fase": l.get("phase"), "Status": l.get("status"),
+                  "Ordem": l.get("order"), "Lat": l.get("lat"), "Lng": l.get("lng")} for l in loteamentos]
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        pd.DataFrame(_export_rows(sales), columns=EXPORT_COLUMNS).to_excel(writer, index=False, sheet_name="Vendas")
+        (pd.DataFrame(parc_rows) if parc_rows else pd.DataFrame()).to_excel(writer, index=False, sheet_name="Parcelas")
+        (pd.DataFrame(pay_rows) if pay_rows else pd.DataFrame()).to_excel(writer, index=False, sheet_name="Baixas_Pagamentos")
+        _df(clients).to_excel(writer, index=False, sheet_name="Clientes")
+        _df(corretores).to_excel(writer, index=False, sheet_name="Corretores")
+        _df(audit).to_excel(writer, index=False, sheet_name="Auditoria")
+        _df(appts).to_excel(writer, index=False, sheet_name="Agenda")
+        (pd.DataFrame(lote_rows) if lote_rows else pd.DataFrame()).to_excel(writer, index=False, sheet_name="Loteamentos")
+        _df(goals).to_excel(writer, index=False, sheet_name="Metas")
+    buf.seek(0)
+    ts = _br_now().strftime("%Y%m%d")
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="backup-brilhantes-{ts}.xlsx"'},
+    )
+
+
 @api_router.get("/export/pdf")
 async def export_pdf(month: Optional[int] = None, year: Optional[int] = None,
                      columns: Optional[str] = None,
