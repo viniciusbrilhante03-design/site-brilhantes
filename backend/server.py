@@ -1,7 +1,7 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Form, Header, Query, BackgroundTasks
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from mongo_compat import db, get_session, close_session
 import os
 import logging
 from pathlib import Path
@@ -27,12 +27,16 @@ import unicodedata
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
-
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
+
+@app.on_event("startup")
+async def _startup():
+    await get_session()
+
+@app.on_event("shutdown")
+async def _shutdown():
+    await close_session()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -4575,15 +4579,7 @@ app.add_middleware(
 
 
 @app.on_event("startup")
-async def _startup():
-    try:
-        await db.login_attempts.create_index("identifier")
-        await db.login_attempts.create_index("email")
-        await db.password_reset_tokens.create_index("token_hash", unique=True)
-        await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
-        await db.password_reset_requests.create_index("created_at", expireAfterSeconds=900)
-    except Exception as e:
-        logger.warning(f"index setup: {e}")
+async def _startup_legacy():
     if MASTER_EMAILS:
         await db.users.update_many({"email": {"$in": list(MASTER_EMAILS)}},
                                    {"$set": {"role": "master"}})
@@ -4592,41 +4588,8 @@ async def _startup():
             await _ensure_loteamento(n)
     except Exception as e:
         logger.warning(f"loteamento backfill: {e}")
-    # Unify legacy manual brokers into corretor users
-    try:
-        for b in await db.brokers.find({}, {"_id": 0}).to_list(1000):
-            if not (b.get("war_name") or b.get("full_name")):
-                continue
-            match = await _resolve_corretor_by_name(b.get("war_name")) or await _resolve_corretor_by_name(b.get("full_name"))
-            if match:
-                if b.get("photo") and not match.get("picture"):
-                    await db.users.update_one({"user_id": match["user_id"]}, {"$set": {"picture": b["photo"]}})
-                continue
-            email = (b.get("email") or "").strip().lower()
-            if email and await db.users.find_one({"email": email}):
-                email = ""
-            await db.users.insert_one({
-                "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email,
-                "name": b.get("full_name") or "", "war_name": b.get("war_name") or "",
-                "phone": b.get("phone") or "", "creci": b.get("creci") or "",
-                "picture": b.get("photo") or "", "role": "corretor", "active": True,
-                "token_version": 0, "manual": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-    except Exception as e:
-        logger.warning(f"broker migration: {e}")
-    # Backfill: corretores manuais sem senha recebem senha inicial = CPF (só dígitos)
-    try:
-        async for u in db.users.find({"role": "corretor", "cpf": {"$nin": [None, ""]},
-                                      "password_hash": {"$in": [None, ""]}}, {"_id": 0, "user_id": 1, "cpf": 1}):
-            digits = _only_digits(u.get("cpf") or "")
-            if len(digits) >= 6:
-                await db.users.update_one({"user_id": u["user_id"]},
-                                          {"$set": {"password_hash": hash_password(digits)}})
-    except Exception as e:
-        logger.warning(f"corretor password backfill: {e}")
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    await close_session()
