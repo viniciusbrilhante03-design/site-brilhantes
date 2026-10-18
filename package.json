@@ -1,0 +1,11 @@
+{
+  "name": "brilhantes",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix frontend start",
+    "build": "npm --prefix frontend build",
+    "test": "npm --prefix frontend test",
+    "install:frontend": "npm --prefix frontend install"
+  }
+}
