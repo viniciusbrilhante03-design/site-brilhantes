@@ -39,6 +39,21 @@ export default function ExportDialog({ open, onOpenChange, onExport }) {
     }
   };
 
+  const exportJson = async () => {
+    try {
+      const res = await api.get("/export/backup-json", { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "backup-brilhantes.json";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Backup em JSON gerado!");
+    } catch {
+      toast.error("Erro ao gerar backup JSON.");
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg" data-testid="export-dialog">
@@ -76,11 +91,15 @@ export default function ExportDialog({ open, onOpenChange, onExport }) {
           </Button>
         </div>
 
-        <div className="pt-2 mt-1 border-t border-border/60">
-          <p className="text-xs text-muted-foreground mb-2">Backup de <strong>todos os dados</strong> (vendas, parcelas, baixas, clientes, corretores, agenda, auditoria) — o que o GitHub não leva.</p>
+        <div className="pt-2 mt-1 border-t border-border/60 space-y-2">
+          <p className="text-xs text-muted-foreground">Backup de <strong>todos os dados</strong> (vendas, parcelas, baixas, clientes, corretores, agenda, auditoria) — o que o GitHub não leva.</p>
           <Button data-testid="export-run-clients" variant="secondary" className="w-full" onClick={exportClients}>
-            <Users className="h-4 w-4 mr-1.5" /> Baixar backup completo (.xlsx)
+            <Users className="h-4 w-4 mr-1.5" /> Backup completo — Excel (.xlsx)
           </Button>
+          <Button data-testid="export-run-json" variant="outline" className="w-full" onClick={exportJson}>
+            <FileText className="h-4 w-4 mr-1.5" /> Backup p/ migração — JSON (Bolt/código)
+          </Button>
+          <p className="text-[11px] text-muted-foreground">Use o <strong>JSON</strong> ao migrar para outra ferramenta (ex.: Bolt), pois ela não aceita .xlsx.</p>
         </div>
       </DialogContent>
     </Dialog>

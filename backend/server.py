@@ -3835,6 +3835,30 @@ async def export_backup(user: dict = Depends(require_master)):
     )
 
 
+@api_router.get("/export/backup-json")
+async def export_backup_json(user: dict = Depends(require_master)):
+    """Backup completo em JSON (texto) — formato aceito por Bolt/outras ferramentas e pronto p/ re-importar no código."""
+    import json as _json
+    skip = {"password_reset_tokens", "password_reset_requests", "oauth_states", "user_sessions",
+            "login_attempts", "cron_runs", "attachments"}
+    out = {}
+    for cn in await db.list_collection_names():
+        if cn in skip:
+            continue
+        docs = await db[cn].find({}, {"_id": 0}).to_list(100000)
+        if cn == "users":
+            for d in docs:
+                d.pop("password_hash", None)
+                d.pop("google_calendar", None)
+        out[cn] = docs
+    payload = _json.dumps({"app": "controle-imoveis-1",
+                           "exported_at": datetime.now(timezone.utc).isoformat(),
+                           "collections": out}, ensure_ascii=False, default=str, indent=2)
+    ts = _br_now().strftime("%Y%m%d")
+    return Response(content=payload, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="backup-brilhantes-{ts}.json"'})
+
+
 @api_router.get("/export/pdf")
 async def export_pdf(month: Optional[int] = None, year: Optional[int] = None,
                      columns: Optional[str] = None,
