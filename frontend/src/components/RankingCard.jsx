@@ -125,7 +125,7 @@ export default function RankingCard() {
                   <Avatar className={`h-9 w-9 ${p ? `ring-2 ${p.ring} ring-offset-1 ring-offset-background` : ""}`}>
                     {b.photo ? <AvatarImage src={b.photo} alt={b.broker_name} /> : null}
                     <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                      {b.broker_name.slice(0, 2).toUpperCase()}
+                      {(b.broker_name || "C").slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                 )}

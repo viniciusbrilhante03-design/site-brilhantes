@@ -122,14 +122,14 @@ export default function Dashboard() {
 
   const brokers = useMemo(() => {
     const set = new Set();
-    (corretoresQ.data || []).forEach((c) => { const n = c.war_name || c.name; if (n) set.add(n); });
-    (salesQ.data || []).forEach((s) => s.broker_name && set.add(s.broker_name));
+    (Array.isArray(corretoresQ.data) ? corretoresQ.data : []).forEach((c) => { const n = c.war_name || c.name; if (n) set.add(n); });
+    (Array.isArray(salesQ.data) ? salesQ.data : []).forEach((s) => s.broker_name && set.add(s.broker_name));
     return Array.from(set);
   }, [corretoresQ.data, salesQ.data]);
 
   const photoMap = useMemo(() => {
     const m = {};
-    (corretoresQ.data || []).forEach((c) => {
+    (Array.isArray(corretoresQ.data) ? corretoresQ.data : []).forEach((c) => {
       const n = (c.war_name || c.name || "").trim().toLowerCase();
       const p = c.photo || c.picture;
       if (n && p) m[n] = p;
@@ -376,7 +376,7 @@ export default function Dashboard() {
         initial={editing}
         brokers={brokers}
         loteamentos={loteamentos}
-        clients={clientsQ.data || []}
+        clients={Array.isArray(clientsQ.data) ? clientsQ.data : []}
       />
 
       <InstallmentsDialog
@@ -419,7 +419,7 @@ export default function Dashboard() {
         photoMap={photoMap}
         onOpenChange={(v) => { if (!v) setCelebrateSale(null); }}
       />
-      <AgendaDialog open={agendaOpen} onOpenChange={setAgendaOpen} clients={clientsQ.data || []} />
+      <AgendaDialog open={agendaOpen} onOpenChange={setAgendaOpen} clients={Array.isArray(clientsQ.data) ? clientsQ.data : []} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />
       <LoteamentosDialog open={lotsOpen} onOpenChange={setLotsOpen} />
       <AiSettingsDialog open={aiOpen} onOpenChange={setAiOpen} />

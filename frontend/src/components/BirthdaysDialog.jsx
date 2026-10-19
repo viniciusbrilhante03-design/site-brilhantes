@@ -61,7 +61,7 @@ export default function BirthdaysDialog({ open, onOpenChange }) {
               <div key={c.name.toLowerCase()} data-testid={`birthday-card-${c.name.toLowerCase()}`}
                 className="flex items-center gap-3 rounded-xl border border-border/60 p-3">
                 <div className="h-11 w-11 rounded-lg bg-[hsl(var(--gold)/0.12)] text-[hsl(var(--gold))] flex flex-col items-center justify-center shrink-0">
-                  <span className="text-[9px] uppercase leading-none">{MESES[c.bmonth - 1].slice(0, 3)}</span>
+                  <span className="text-[9px] uppercase leading-none">{(MESES[c.bmonth - 1] || "").slice(0, 3)}</span>
                   <span className="font-heading font-extrabold text-base leading-tight">{String(c.bday).padStart(2, "0")}</span>
                 </div>
                 <div className="flex-1 min-w-0">
