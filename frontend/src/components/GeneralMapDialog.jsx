@@ -11,6 +11,7 @@ import { MapPinned, MapPin, Search, Navigation, Layers, Map as MapIcon } from "l
 const statusColor = (l) => (l.phase === "lancamento" ? "#D4AF37" : (l.tipo === "fechado" ? "#E11D48" : "#10B981"));
 const routeUrl = (l) => `https://www.google.com/maps/dir/?api=1&destination=${l.lat},${l.lng}`;
 const localLabel = (l) => [l.cidade, l.estado].filter(Boolean).join(" - ");
+const BACKEND = process.env.REACT_APP_BACKEND_URL;
 
 export default function GeneralMapDialog({ open, onOpenChange, onSelectLot, large = false }) {
   const ref = useRef(null);
@@ -71,6 +72,7 @@ export default function GeneralMapDialog({ open, onOpenChange, onSelectLot, larg
         bounds.extend(pos);
         marker.addListener("click", () => {
           info.setContent(
+            `${l.cover ? `<img src="${BACKEND}/api/loteamentos/images/${l.cover}/raw" alt="${l.name}" style="width:100%;max-width:240px;height:120px;object-fit:cover;border-radius:8px;margin-bottom:6px;display:block" />` : ""}` +
             `<div style="font-weight:700;font-size:14px;color:#0F382C;margin-bottom:2px">${l.name}</div>` +
             `<div style="font-size:12px;color:#374151;font-weight:500">${localLabel(l) || "Sem cidade/estado"}</div>` +
             `<div style="margin-top:6px;display:flex;gap:6px">` +
