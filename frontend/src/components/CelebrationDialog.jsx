@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { brl } from "@/lib/format";
@@ -284,6 +284,7 @@ export default function CelebrationDialog({ sale, photoMap = {}, onOpenChange })
         data-testid="celebration-dialog"
         className="max-w-md overflow-hidden border-[hsl(var(--gold)/0.4)] bg-gradient-to-b from-[#0a2417] to-[#04100a] text-white p-0"
       >
+        <DialogTitle className="sr-only">Venda realizada — Parabéns</DialogTitle>
         <button
           data-testid="celebration-close"
           onClick={() => onOpenChange(false)}
