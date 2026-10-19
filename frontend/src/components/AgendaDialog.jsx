@@ -135,7 +135,7 @@ export default function AgendaDialog({ open, onOpenChange, clients = [] }) {
     onSuccess: () => { invalidate(); toast.success("Compromisso removido."); },
   });
 
-  const list = apptQ.data || [];
+  const list = Array.isArray(apptQ.data) ? apptQ.data : [];
   const pending = list.filter((a) => !a.done);
   const doneList = list.filter((a) => a.done);
   const valid = form.title.trim() && form.when.trim();
