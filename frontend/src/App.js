@@ -17,8 +17,8 @@ class AppErrorBoundary extends Component {
     this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error) {
+    return { hasError: true, message: error?.message || "Erro inesperado" };
   }
 
   render() {
@@ -28,6 +28,7 @@ class AppErrorBoundary extends Component {
           <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
             <h1 className="font-heading text-2xl font-extrabold">Não foi possível carregar o painel</h1>
             <p className="mt-3 text-sm text-muted-foreground">A sessão foi reconhecida, mas houve um problema ao abrir os dados.</p>
+            <p className="mt-3 break-words rounded-lg bg-muted p-3 text-left text-xs text-muted-foreground">{this.state.message}</p>
             <button
               type="button"
               className="mt-6 h-11 w-full rounded-xl bg-primary px-4 font-semibold text-primary-foreground"
