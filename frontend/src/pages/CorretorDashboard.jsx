@@ -25,8 +25,9 @@ import CelebrationDialog from "@/components/CelebrationDialog";
 import AgendaDialog from "@/components/AgendaDialog";
 import ExportDialog from "@/components/ExportDialog";
 import CorretorLoteamentosDialog from "@/components/CorretorLoteamentosDialog";
+import ClientsDialog from "@/components/ClientsDialog";
 import GeneralMapDialog from "@/components/GeneralMapDialog";
-import { LogOut, Moon, Sun, CalendarDays, KeyRound, TrendingUp, Wallet, Clock, Hash, UserRound, Cake, CalendarClock, Building2, MapPinned } from "lucide-react";
+import { LogOut, Moon, Sun, CalendarDays, KeyRound, TrendingUp, Wallet, Clock, Hash, UserRound, Cake, CalendarClock, Building2, MapPinned, Contact } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -51,6 +52,7 @@ export default function CorretorDashboard() {
   const [agendaOpen, setAgendaOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [lotsOpen, setLotsOpen] = useState(false);
+  const [clientsOpen, setClientsOpen] = useState(false);
   const [mapaOpen, setMapaOpen] = useState(false);
   const [focusLot, setFocusLot] = useState(null);
 
@@ -126,6 +128,9 @@ export default function CorretorDashboard() {
               <SelectContent>{YEARS.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
             </Select>
             <Button variant="outline" size="icon" className="h-9 w-9" onClick={theme.toggle}>{theme.dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</Button>
+            <Button data-testid="btn-open-clientes" variant="outline" className="h-9 gap-1.5" onClick={() => setClientsOpen(true)}>
+              <Contact className="h-4 w-4" /><span className="hidden md:inline">Clientes</span>
+            </Button>
             <Button data-testid="btn-open-agenda" variant="outline" className="h-9 gap-1.5" onClick={() => setAgendaOpen(true)}>
               <CalendarClock className="h-4 w-4" /><span className="hidden md:inline">Agenda</span>
             </Button>
@@ -199,6 +204,7 @@ export default function CorretorDashboard() {
         onBaixa={(saleId, number, payload) => baixaMut.mutate({ saleId, number, payload })} />
       <CommissionsDialog open={commOpen} onOpenChange={setCommOpen} isMaster={false} />
       <CorretorLoteamentosDialog open={lotsOpen} onOpenChange={(v) => { setLotsOpen(v); if (!v) setFocusLot(null); }} focusLot={focusLot} />
+      <ClientsDialog open={clientsOpen} onOpenChange={setClientsOpen} />
       <GeneralMapDialog open={mapaOpen} onOpenChange={setMapaOpen} large
         onSelectLot={(l) => { setMapaOpen(false); setFocusLot(l); setLotsOpen(true); }} />
       <AttachmentsDialog open={!!attachSale} onOpenChange={(v) => { if (!v) setAttachSale(null); }} sale={attachSale} />

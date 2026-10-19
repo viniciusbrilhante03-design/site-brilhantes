@@ -294,6 +294,8 @@ class Client(ClientCreate):
     id: str = Field(default_factory=lambda: f"client_{uuid.uuid4().hex[:12]}")
     name_key: str = ""
     cpf_key: str = ""
+    owner_id: Optional[str] = ""
+    broker_name: Optional[str] = ""
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -2791,6 +2793,14 @@ async def list_clients(user: dict = Depends(get_current_user)):
                 out.append({"name": rc.get("name"), "phone": rc.get("phone", ""), "email": rc.get("email", ""),
                             "birthdate": rc.get("birthdate", ""), "broker": "", "qtd": 0, "volume": 0.0,
                             "last_date": "", "purchases": [], "client_id": rc.get("id")})
+    else:
+        seen = {_norm_name(c["name"]) for c in out}
+        for rc in await db.clients.find({"owner_id": user.get("user_id")}, {"_id": 0}).to_list(5000):
+            if _norm_name(rc.get("name")) not in seen:
+                out.append({"name": rc.get("name"), "phone": rc.get("phone", ""), "email": rc.get("email", ""),
+                            "birthdate": rc.get("birthdate", ""), "broker": rc.get("broker_name", ""), "qtd": 0, "volume": 0.0,
+                            "last_date": "", "purchases": [], "client_id": rc.get("id")})
+    out.sort(key=lambda c: c["name"].lower())
     return out
 
 
@@ -2812,7 +2822,8 @@ async def create_client(data: ClientCreate, force: bool = False, user: dict = De
         if dup:
             raise HTTPException(status_code=409, detail={"code": "client_dup",
                                 "message": f"Cliente parecido já existe: {dup['name']}.", "client": dup})
-    c = Client(**data.model_dump(), name_key=nk, cpf_key=cpf)
+    c = Client(**data.model_dump(), name_key=nk, cpf_key=cpf,
+               owner_id=user.get("user_id") or "", broker_name=_display(user))
     await db.clients.insert_one(c.model_dump())
     return c
 

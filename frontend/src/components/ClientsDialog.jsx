@@ -49,7 +49,7 @@ export default function ClientsDialog({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="clients-dialog">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto" data-testid="clients-dialog">
         <DialogHeader>
           <DialogTitle className="font-heading text-xl flex items-center gap-2"><Contact className="h-5 w-5" /> Clientes</DialogTitle>
           <DialogDescription>Busque por nome, telefone ou e-mail — ou cadastre um novo cliente.</DialogDescription>
