@@ -89,10 +89,10 @@ export default function AttachmentsDialog({ open, onOpenChange, sale }) {
         <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
           {listQ.isLoading ? (
             <p className="text-sm text-muted-foreground text-center py-4">Carregando...</p>
-          ) : (listQ.data || []).length === 0 ? (
+          ) : (Array.isArray(listQ.data) ? listQ.data : []).length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">Nenhum anexo ainda.</p>
           ) : (
-            (listQ.data || []).map((att) => (
+            (Array.isArray(listQ.data) ? listQ.data : []).map((att) => (
               <div key={att.id} data-testid={`attachment-item-${att.id}`}
                 className="flex items-center gap-3 p-3 rounded-lg border border-border/60">
                 <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
