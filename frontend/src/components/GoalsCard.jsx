@@ -14,7 +14,7 @@ function band(pct) {
 }
 
 export default function GoalsCard({ goals, onManage }) {
-  const list = goals || [];
+  const list = Array.isArray(goals) ? goals : [];
   return (
     <Card className="p-5 rounded-xl border-border/60" data-testid="goals-card">
       <div className="flex items-center justify-between mb-4">

@@ -38,15 +38,16 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
   const [bulkBroker, setBulkBroker] = useState("");
   const setFilter = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
-  const loteamentos = useMemo(() => [...new Set((sales || []).map((s) => s.property_name).filter(Boolean))].sort(), [sales]);
+  const saleList = Array.isArray(sales) ? sales : [];
+  const loteamentos = useMemo(() => [...new Set(saleList.map((s) => s.property_name).filter(Boolean))].sort(), [saleList]);
   const corretores = useMemo(() => {
     const set = new Set();
-    (sales || []).forEach((s) => {
+    saleList.forEach((s) => {
       (s.brokers || []).forEach((b) => b.name && set.add(b.name));
       if (!(s.brokers || []).length && s.broker_name) set.add(s.broker_name);
     });
     return [...set].sort();
-  }, [sales]);
+  }, [saleList]);
 
   const activeCount = useMemo(() => {
     let n = 0;
@@ -63,7 +64,7 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return (sales || []).filter((s) => {
+    return saleList.filter((s) => {
       if (t) {
         const hay = [s.property_name, s.broker_name, s.client_name, s.quadra, s.lote].map((x) => (x || "").toLowerCase());
         if (!hay.some((h) => h.includes(t))) return false;

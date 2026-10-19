@@ -118,7 +118,7 @@ export default function Dashboard() {
     ["sales", "stats", "ranking", "series", "loteamentos", "corretores", "clients", "goals"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   };
 
-  const loteamentos = useMemo(() => (loteamentosQ.data || []).map((l) => l.name), [loteamentosQ.data]);
+  const loteamentos = useMemo(() => (Array.isArray(loteamentosQ.data) ? loteamentosQ.data : []).map((l) => l.name), [loteamentosQ.data]);
 
   const brokers = useMemo(() => {
     const set = new Set();
