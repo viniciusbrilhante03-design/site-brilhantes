@@ -50,7 +50,7 @@ export default function GeneralMapDialog({ open, onOpenChange, onSelectLot, larg
       if (cancelled || !ref.current) return;
       const map = new maps.Map(ref.current, {
         zoom: 11, center: { lat: Number(fpts[0].lat), lng: Number(fpts[0].lng) },
-        mapTypeControl: true, streetViewControl: false, fullscreenControl: true, mapTypeId: mapType,
+        mapTypeControl: true, streetViewControl: false, fullscreenControl: true, zoomControl: true, mapTypeId: mapType,
         mapTypeControlOptions: { mapTypeIds: ["roadmap", "satellite", "hybrid"] },
       });
       mapObj.current = map;

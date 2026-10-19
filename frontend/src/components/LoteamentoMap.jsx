@@ -15,7 +15,7 @@ export default function LoteamentoMap({ lot }) {
     loadGoogleMaps().then((maps) => {
       if (cancelled || !ref.current) return;
       const pos = { lat: Number(lat), lng: Number(lng) };
-      const map = new maps.Map(ref.current, { center: pos, zoom: 15, mapTypeControl: false, streetViewControl: false });
+      const map = new maps.Map(ref.current, { center: pos, zoom: 15, mapTypeControl: false, streetViewControl: false, zoomControl: true });
       new maps.Marker({ position: pos, map, title: lot?.name });
     }).catch(() => setErr(true));
     return () => { cancelled = true; };
