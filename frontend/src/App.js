@@ -1,4 +1,5 @@
 import "@/App.css";
+import { Component } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
@@ -9,6 +10,38 @@ import CorretorDashboard from "@/pages/CorretorDashboard";
 import Cadastro from "@/pages/Cadastro";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
+
+class AppErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background p-6">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+            <h1 className="font-heading text-2xl font-extrabold">Não foi possível carregar o painel</h1>
+            <p className="mt-3 text-sm text-muted-foreground">A sessão foi reconhecida, mas houve um problema ao abrir os dados.</p>
+            <button
+              type="button"
+              className="mt-6 h-11 w-full rounded-xl bg-primary px-4 font-semibold text-primary-foreground"
+              onClick={() => window.location.assign("/")}
+            >
+              Voltar para o login
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function Loader() {
   return (
@@ -51,12 +84,14 @@ function AppRouter() {
 function App() {
   return (
     <div className="App">
-      <AuthProvider>
-        <BrowserRouter>
-          <AppRouter />
-          <Toaster position="top-right" richColors />
-        </BrowserRouter>
-      </AuthProvider>
+      <AppErrorBoundary>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppRouter />
+            <Toaster position="top-right" richColors />
+          </BrowserRouter>
+        </AuthProvider>
+      </AppErrorBoundary>
     </div>
   );
 }
