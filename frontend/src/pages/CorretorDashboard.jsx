@@ -53,12 +53,19 @@ export default function CorretorDashboard() {
 
   const params = useMemo(() => (month === ALL ? { year } : { month, year }), [month, year]);
 
-  const salesQ = useQuery({ queryKey: ["sales", params], queryFn: async () => (await api.get("/sales", { params })).data });
+  const salesQ = useQuery({
+    queryKey: ["sales", params],
+    queryFn: async () => {
+      const data = (await api.get("/sales", { params })).data;
+      return Array.isArray(data) ? data : Array.isArray(data?.sales) ? data.sales : Array.isArray(data?.vendas) ? data.vendas : [];
+    },
+  });
   const statsQ = useQuery({ queryKey: ["stats", params], queryFn: async () => (await api.get("/stats", { params })).data });
   const rankingQ = useQuery({ queryKey: ["ranking", params], queryFn: async () => (await api.get("/ranking", { params })).data, enabled: false });
   const goalsQ = useQuery({ queryKey: ["goals", params], queryFn: async () => (await api.get("/goals", { params })).data });
   const loteamentosQ = useQuery({ queryKey: ["loteamentos"], queryFn: async () => (await api.get("/loteamentos")).data });
   const loteamentos = useMemo(() => (Array.isArray(loteamentosQ.data) ? loteamentosQ.data : []).map((l) => l.name), [loteamentosQ.data]);
+  const sales = Array.isArray(salesQ.data) ? salesQ.data : [];
   const clientsQ = useQuery({ queryKey: ["clients"], queryFn: async () => (await api.get("/clients")).data });
 
   const invalidateAll = () => ["sales", "stats", "ranking", "clients"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
@@ -170,7 +177,7 @@ export default function CorretorDashboard() {
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 min-w-0">
             <SalesSection
-              sales={salesQ.data} loading={salesQ.isLoading}
+              sales={sales} loading={salesQ.isLoading}
               onAdd={() => { setEditing(null); setFormOpen(true); }}
               onEdit={(x) => { setEditing(x); setFormOpen(true); }}
               onDuplicate={(x) => { setEditing({ ...x, id: undefined, quadra: "", lote: "", installments: [] }); setFormOpen(true); }}

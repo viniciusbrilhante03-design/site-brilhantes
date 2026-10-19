@@ -82,7 +82,10 @@ export default function Dashboard() {
 
   const salesQ = useQuery({
     queryKey: ["sales", params],
-    queryFn: async () => (await api.get("/sales", { params })).data,
+    queryFn: async () => {
+      const data = (await api.get("/sales", { params })).data;
+      return Array.isArray(data) ? data : Array.isArray(data?.sales) ? data.sales : Array.isArray(data?.vendas) ? data.vendas : [];
+    },
   });
   const statsQ = useQuery({
     queryKey: ["stats", params],
@@ -119,13 +122,14 @@ export default function Dashboard() {
   };
 
   const loteamentos = useMemo(() => (Array.isArray(loteamentosQ.data) ? loteamentosQ.data : []).map((l) => l.name), [loteamentosQ.data]);
+  const sales = Array.isArray(salesQ.data) ? salesQ.data : [];
 
   const brokers = useMemo(() => {
     const set = new Set();
     (Array.isArray(corretoresQ.data) ? corretoresQ.data : []).forEach((c) => { const n = c.war_name || c.name; if (n) set.add(n); });
-    (Array.isArray(salesQ.data) ? salesQ.data : []).forEach((s) => s.broker_name && set.add(s.broker_name));
+    sales.forEach((s) => s.broker_name && set.add(s.broker_name));
     return Array.from(set);
-  }, [corretoresQ.data, salesQ.data]);
+  }, [corretoresQ.data, sales]);
 
   const photoMap = useMemo(() => {
     const m = {};
@@ -350,7 +354,7 @@ export default function Dashboard() {
         </div>
 
         <SalesSection
-          sales={salesQ.data}
+          sales={sales}
           loading={salesQ.isLoading}
           onAdd={() => { setEditing(null); setFormOpen(true); }}
           onEdit={(s) => { setEditing(s); setFormOpen(true); }}
