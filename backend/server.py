@@ -4302,6 +4302,22 @@ async def list_corretores(user: dict = Depends(require_master)):
     return out
 
 
+@api_router.get("/corretores/names")
+async def corretor_names(user: dict = Depends(get_current_user)):
+    """Nomes dos corretores para autocomplete (parceiros de venda). Acessível a qualquer usuário logado."""
+    users = await db.users.find({"role": "corretor"}, {"_id": 0, "war_name": 1, "name": 1, "active": 1}).to_list(500)
+    names, seen = [], set()
+    for u in users:
+        if u.get("active") is False:
+            continue
+        n = (u.get("war_name") or u.get("name") or "").strip()
+        if n and n.lower() not in seen:
+            seen.add(n.lower())
+            names.append(n)
+    names.sort(key=lambda s: s.lower())
+    return names
+
+
 @api_router.post("/corretores")
 async def create_corretor(data: CorretorProfile, user: dict = Depends(require_master)):
     if not (data.name or data.war_name):

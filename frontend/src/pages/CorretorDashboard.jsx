@@ -37,6 +37,7 @@ export default function CorretorDashboard() {
   const { user, logout } = useAuth();
   const qc = useQueryClient();
   const theme = useThemeMode();
+  const brokerNamesQ = useQuery({ queryKey: ["corretor-names"], queryFn: async () => (await api.get("/corretores/names")).data });
   const [month, setMonth] = useState(ALL);
   const [year, setYear] = useState(currentYear);
   const [formOpen, setFormOpen] = useState(false);
@@ -197,7 +198,7 @@ export default function CorretorDashboard() {
       </main>
 
       <SaleFormDialog open={formOpen} onOpenChange={(v) => { setFormOpen(v); if (!v) setEditing(null); }}
-        onSubmit={(p) => createMut.mutate(p)} initial={editing} brokers={[display]}
+        onSubmit={(p) => createMut.mutate(p)} initial={editing} brokers={(brokerNamesQ.data && brokerNamesQ.data.length) ? brokerNamesQ.data : [display]}
         loteamentos={loteamentos} clients={clientsQ.data || []} lockBroker lockBrokerName={display} />
       <InstallmentsDialog open={!!instSale} onOpenChange={(v) => { if (!v) setInstSale(null); }} sale={instSale}
         onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })}
