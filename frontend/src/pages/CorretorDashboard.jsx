@@ -58,7 +58,7 @@ export default function CorretorDashboard() {
   const rankingQ = useQuery({ queryKey: ["ranking", params], queryFn: async () => (await api.get("/ranking", { params })).data, enabled: false });
   const goalsQ = useQuery({ queryKey: ["goals", params], queryFn: async () => (await api.get("/goals", { params })).data });
   const loteamentosQ = useQuery({ queryKey: ["loteamentos"], queryFn: async () => (await api.get("/loteamentos")).data });
-  const loteamentos = useMemo(() => (loteamentosQ.data || []).map((l) => l.name), [loteamentosQ.data]);
+  const loteamentos = useMemo(() => (Array.isArray(loteamentosQ.data) ? loteamentosQ.data : []).map((l) => l.name), [loteamentosQ.data]);
   const clientsQ = useQuery({ queryKey: ["clients"], queryFn: async () => (await api.get("/clients")).data });
 
   const invalidateAll = () => ["sales", "stats", "ranking", "clients"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
@@ -187,7 +187,7 @@ export default function CorretorDashboard() {
 
       <SaleFormDialog open={formOpen} onOpenChange={(v) => { setFormOpen(v); if (!v) setEditing(null); }}
         onSubmit={(p) => createMut.mutate(p)} initial={editing} brokers={[display]}
-        loteamentos={loteamentos} clients={clientsQ.data || []} lockBroker lockBrokerName={display} />
+        loteamentos={loteamentos} clients={Array.isArray(clientsQ.data) ? clientsQ.data : []} lockBroker lockBrokerName={display} />
       <InstallmentsDialog open={!!instSale} onOpenChange={(v) => { if (!v) setInstSale(null); }} sale={instSale}
         onToggle={(saleId, number) => toggleMut.mutate({ saleId, number })}
         onBaixa={(saleId, number, payload) => baixaMut.mutate({ saleId, number, payload })} />
@@ -207,7 +207,7 @@ export default function CorretorDashboard() {
         photoMap={{ [(display || "").toLowerCase()]: user?.picture }}
         onOpenChange={(v) => { if (!v) setCelebrateSale(null); }}
       />
-      <AgendaDialog open={agendaOpen} onOpenChange={setAgendaOpen} clients={clientsQ.data || []} />
+      <AgendaDialog open={agendaOpen} onOpenChange={setAgendaOpen} clients={Array.isArray(clientsQ.data) ? clientsQ.data : []} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />
     </div>
   );
