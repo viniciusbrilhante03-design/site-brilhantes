@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 
 import { MESES_CURTO, brl } from "@/lib/format";
 
 export default function MonthlyChart({ series, activeMonth }) {
-  const data = (series || []).map((m) => ({
+  const data = (Array.isArray(series) ? series : []).map((m) => ({
     name: MESES_CURTO[m.month - 1],
     month: m.month,
     volume: m.volume,

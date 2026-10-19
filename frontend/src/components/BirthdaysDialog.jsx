@@ -28,7 +28,7 @@ export default function BirthdaysDialog({ open, onOpenChange }) {
     enabled: open,
   });
 
-  const list = bdayQ.data || [];
+  const list = Array.isArray(bdayQ.data) ? bdayQ.data : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
