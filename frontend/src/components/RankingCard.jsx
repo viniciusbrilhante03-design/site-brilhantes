@@ -45,7 +45,7 @@ export default function RankingCard() {
   });
 
   const sorted = useMemo(() => {
-    const list = [...(rankingQ.data || [])];
+    const list = [...(Array.isArray(rankingQ.data) ? rankingQ.data : [])];
     const key = order === "volume" ? "volume" : order === "count" ? "qtd" : (isLot ? "volume" : "comissao_corretor");
     return list.sort((a, b) => (b[key] || 0) - (a[key] || 0));
   }, [rankingQ.data, order, isLot]);
