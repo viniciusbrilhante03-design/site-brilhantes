@@ -18,6 +18,25 @@ function loadImage(src) {
   });
 }
 
+const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+// Carrega a imagem sem "tainting" o canvas (via blob) para que o toBlob/salvar funcione.
+async function loadImageSafe(src) {
+  if (!src) return null;
+  if (src.startsWith("data:")) return loadImage(src);
+  try {
+    const res = await fetch(src, { credentials: "include" });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const img = await loadImage(url);
+    URL.revokeObjectURL(url);
+    return img;
+  } catch {
+    return null;
+  }
+}
+
 function wrapText(ctx, text, maxWidth) {
   const words = (text || "").split(" ");
   const lines = [];
@@ -47,7 +66,12 @@ export default function CelebrationDialog({ sale, photoMap = {}, onOpenChange })
   }, [sale]);
 
   const displayName = sale?.broker_name || firstBrokerName || "Corretor";
-  const photo = photoMap[(firstBrokerName || "").toLowerCase()] || null;
+  const normMap = useMemo(() => {
+    const m = {};
+    Object.entries(photoMap || {}).forEach(([k, v]) => { if (v) m[norm(k)] = v; });
+    return m;
+  }, [photoMap]);
+  const photo = normMap[norm(firstBrokerName)] || null;
   const phrase = useMemo(() => randomPhrase(), [sale?.id]);
 
   useEffect(() => {
@@ -125,7 +149,7 @@ export default function CelebrationDialog({ sale, photoMap = {}, onOpenChange })
 
     // Broker photo
     const cx = W / 2, cy = 800, rad = 90;
-    const bphoto = await loadImage(photo);
+    const bphoto = await loadImageSafe(photo);
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, rad, 0, Math.PI * 2);
@@ -203,7 +227,10 @@ export default function CelebrationDialog({ sale, photoMap = {}, onOpenChange })
     ctx.font = "700 36px 'Plus Jakarta Sans', Arial, sans-serif";
     ctx.fillText("Brilhante's Imóveis 🦅", W / 2, H - 70);
 
-    return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
+    return new Promise((resolve) => {
+      try { canvas.toBlob((b) => resolve(b), "image/png"); }
+      catch { resolve(null); }
+    });
   };
 
   const handleShare = async () => {
