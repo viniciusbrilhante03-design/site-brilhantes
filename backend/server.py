@@ -1762,9 +1762,19 @@ async def create_sale(data: SaleCreate, force: bool = False, force_lot: bool = F
     if user.get("role") == "corretor":
         if not await _loteamento_exists(payload["property_name"]):
             raise HTTPException(status_code=400, detail="Loteamento não cadastrado. Peça ao gestor para cadastrá-lo.")
-        payload["brokers"] = [{"name": _display(user), "split_pct": 100.0, "owner_id": user["user_id"]}]
-        payload["broker_name"] = _display(user)
-        owner_id, owner_name, broker_ids = user["user_id"], _display(user), [user["user_id"]]
+        incoming = payload.get("brokers") or []
+        if not incoming:
+            incoming = [{"name": _display(user), "split_pct": 100.0}]
+        else:
+            incoming = [dict(b) for b in incoming]
+            incoming[0] = {**incoming[0], "name": _display(user), "owner_id": user["user_id"]}
+        payload["brokers"] = incoming
+        resolved, broker_ids = await _normalize_brokers(payload)
+        payload["brokers"] = resolved
+        payload["broker_name"] = " + ".join(r["name"] for r in resolved) if resolved else _display(user)
+        if user["user_id"] not in broker_ids:
+            broker_ids = [user["user_id"]] + broker_ids
+        owner_id, owner_name = user["user_id"], _display(user)
     else:
         await _ensure_loteamento(payload["property_name"])
         resolved, broker_ids = await _normalize_brokers(payload)

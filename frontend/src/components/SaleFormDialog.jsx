@@ -327,59 +327,61 @@ export default function SaleFormDialog({ open, onOpenChange, onSubmit, initial, 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-1.5"><Users className="h-4 w-4" /> Corretor(es)</Label>
-                {!lockBroker && (
-                  <Button type="button" variant="ghost" size="sm" className="h-7 text-xs gap-1"
-                    data-testid="sale-form-add-broker" onClick={addBroker}>
-                    <Plus className="h-3.5 w-3.5" /> Adicionar parceiro
-                  </Button>
-                )}
+                <Button type="button" variant="ghost" size="sm" className="h-7 text-xs gap-1"
+                  data-testid="sale-form-add-broker" onClick={addBroker}>
+                  <Plus className="h-3.5 w-3.5" /> Adicionar parceiro
+                </Button>
               </div>
 
-              {lockBroker ? (
-                <Input data-testid="sale-form-broker-locked" value={partners[0]?.name || ""} disabled className="opacity-90" />
-              ) : (
-                <div className="space-y-2">
-                  {partners.map((b, idx) => {
-                    const share = multi && partnersSum ? (parseFloat(b.split_pct) || 0) / 100 : 1;
-                    return (
-                      <div key={idx} className="flex items-center gap-2" data-testid={`broker-row-${idx}`}>
-                        <Input data-testid={`sale-form-broker-select-${idx}`} list="brokers-list" value={b.name}
-                          onChange={(e) => updateBroker(idx, "name", e.target.value)}
-                          placeholder="Nome de guerra do corretor" className="flex-1" />
-                        {multi && (
-                          <>
-                            <div className="relative w-24">
-                              <Input data-testid={`sale-form-broker-pct-${idx}`} type="number" min="0" max="100"
-                                value={b.split_pct} onChange={(e) => updateBroker(idx, "split_pct", e.target.value)}
-                                className="pr-6 text-right" />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                            </div>
-                            <span className="w-24 text-right text-xs tabular text-[hsl(var(--emerald))]" data-testid={`sale-form-broker-value-${idx}`}>
-                              {brl(brokerComm * share)}
-                            </span>
+              <div className="space-y-2">
+                {partners.map((b, idx) => {
+                  const locked0 = lockBroker && idx === 0;
+                  const share = multi && partnersSum ? (parseFloat(b.split_pct) || 0) / 100 : 1;
+                  return (
+                    <div key={idx} className="flex items-center gap-2" data-testid={`broker-row-${idx}`}>
+                      <Input data-testid={`sale-form-broker-select-${idx}`} list={locked0 ? undefined : "brokers-list"} value={b.name}
+                        onChange={(e) => updateBroker(idx, "name", e.target.value)} disabled={locked0}
+                        placeholder={idx === 0 ? "Nome de guerra do corretor" : "Nome de guerra do parceiro"}
+                        className={`flex-1 ${locked0 ? "opacity-90" : ""}`} />
+                      {multi && (
+                        <>
+                          <div className="relative w-24">
+                            <Input data-testid={`sale-form-broker-pct-${idx}`} type="number" min="0" max="100"
+                              value={b.split_pct} onChange={(e) => updateBroker(idx, "split_pct", e.target.value)}
+                              className="pr-6 text-right" />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                          </div>
+                          <span className="w-24 text-right text-xs tabular text-[hsl(var(--emerald))]" data-testid={`sale-form-broker-value-${idx}`}>
+                            {brl(brokerComm * share)}
+                          </span>
+                          {locked0 ? (
+                            <span className="w-8 shrink-0" />
+                          ) : (
                             <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive shrink-0"
                               data-testid={`sale-form-remove-broker-${idx}`} onClick={() => removeBroker(idx)}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <datalist id="brokers-list">
-                    {(brokers || []).map((bn) => <option key={bn} value={bn} />)}
-                  </datalist>
-                  {multi && (
-                    <p className={`text-xs ${sumOk ? "text-muted-foreground" : "text-destructive font-medium"}`}
-                      data-testid="sale-form-split-sum">
-                      Soma das divisões: <strong>{Math.round(partnersSum)}%</strong>{sumOk ? " ✓" : " — deve somar 100%"}
-                    </p>
-                  )}
-                  {!multi && (
-                    <p className="text-xs text-muted-foreground">A venda é vinculada automaticamente ao corretor informado.</p>
-                  )}
-                </div>
-              )}
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                <datalist id="brokers-list">
+                  {(brokers || []).map((bn) => <option key={bn} value={bn} />)}
+                </datalist>
+                {multi && (
+                  <p className={`text-xs ${sumOk ? "text-muted-foreground" : "text-destructive font-medium"}`}
+                    data-testid="sale-form-split-sum">
+                    Soma das divisões: <strong>{Math.round(partnersSum)}%</strong>{sumOk ? " ✓" : " — deve somar 100%"}
+                  </p>
+                )}
+                {!multi && (
+                  <p className="text-xs text-muted-foreground">
+                    {lockBroker ? "A venda é sua. Clique em “Adicionar parceiro” para dividir a comissão com outro corretor." : "A venda é vinculada automaticamente ao corretor informado."}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
