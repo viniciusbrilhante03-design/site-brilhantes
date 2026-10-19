@@ -10,6 +10,7 @@ import { MapPinned, MapPin, Search, Navigation, Layers, Map as MapIcon } from "l
 
 const statusColor = (l) => (l.phase === "lancamento" ? "#D4AF37" : (l.tipo === "fechado" ? "#E11D48" : "#10B981"));
 const routeUrl = (l) => `https://www.google.com/maps/dir/?api=1&destination=${l.lat},${l.lng}`;
+const localLabel = (l) => [l.cidade, l.estado].filter(Boolean).join(" - ");
 
 export default function GeneralMapDialog({ open, onOpenChange, onSelectLot, large = false }) {
   const ref = useRef(null);
@@ -70,8 +71,8 @@ export default function GeneralMapDialog({ open, onOpenChange, onSelectLot, larg
         bounds.extend(pos);
         marker.addListener("click", () => {
           info.setContent(
-            `<div style="font-weight:600;margin-bottom:2px">${l.name}</div>` +
-            `<div style="font-size:12px;color:#666">${l.cidade || ""}</div>` +
+            `<div style="font-weight:700;font-size:14px;color:#0F382C;margin-bottom:2px">${l.name}</div>` +
+            `<div style="font-size:12px;color:#374151;font-weight:500">${localLabel(l) || "Sem cidade/estado"}</div>` +
             `<div style="margin-top:6px;display:flex;gap:6px">` +
             `<button id="go-${l.id}" style="background:#0F382C;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer">Ver detalhes</button>` +
             `<a href="${routeUrl(l)}" target="_blank" rel="noreferrer" style="background:#D4AF37;color:#000;border-radius:6px;padding:4px 10px;font-size:12px;text-decoration:none">Traçar rota</a>` +
@@ -163,7 +164,7 @@ export default function GeneralMapDialog({ open, onOpenChange, onSelectLot, larg
                 <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: statusColor(l) }} />{l.name}
               </div>
               <div className="text-xs text-muted-foreground flex items-center gap-1 truncate">
-                <MapPin className="h-3 w-3 shrink-0" />{l.lat != null ? (l.cidade || "ver no mapa") : "sem localização — abrir detalhes"}
+                <MapPin className="h-3 w-3 shrink-0" />{l.lat != null ? (localLabel(l) || "ver no mapa") : "sem localização — abrir detalhes"}
               </div>
             </button>
             {l.lat != null && (

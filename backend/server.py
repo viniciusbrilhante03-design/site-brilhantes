@@ -667,6 +667,7 @@ async def list_loteamentos(user: dict = Depends(get_current_user)):
     for d in docs:
         d.setdefault("phase", "em_vendas")
         d["cidade"] = ((d.get("specs") or {}).get("localizacao") or {}).get("cidade") or ""
+        d["estado"] = ((d.get("specs") or {}).get("localizacao") or {}).get("estado") or ""
         d["cover"] = cover.get(d.get("id"))
         d["lat"] = d.get("lat")
         d["lng"] = d.get("lng")
