@@ -17,6 +17,7 @@ export default function GeneralMapDialog({ open, onOpenChange, onSelectLot, larg
   const markers = useRef({});
   const [err, setErr] = useState(false);
   const [q, setQ] = useState("");
+  const [lotSel, setLotSel] = useState("all");
   const [tipo, setTipo] = useState("all");
   const [city, setCity] = useState("all");
   const [mapType, setMapType] = useState("roadmap");
@@ -29,12 +30,13 @@ export default function GeneralMapDialog({ open, onOpenChange, onSelectLot, larg
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     return all.filter((l) => {
+      if (lotSel !== "all" && l.id !== lotSel) return false;
       if (term && !((l.name || "").toLowerCase().includes(term) || (l.cidade || "").toLowerCase().includes(term))) return false;
       if (tipo !== "all" && (l.tipo || "") !== tipo) return false;
       if (city !== "all" && (l.cidade || "") !== city) return false;
       return true;
     });
-  }, [all, q, tipo, city]);
+  }, [all, q, lotSel, tipo, city]);
 
   const fpts = filtered.filter((l) => l.lat != null && l.lng != null);
   const filterKey = fpts.map((l) => l.id).join(",");
@@ -107,12 +109,21 @@ export default function GeneralMapDialog({ open, onOpenChange, onSelectLot, larg
     </div>
   );
 
+  const sortedLots = useMemo(() => [...all].sort((a, b) => (a.name || "").localeCompare(b.name || "")), [all]);
+
   const filtersEl = (
-    <div className="flex flex-col sm:flex-row gap-2">
-      <div className="relative flex-1">
+    <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+      <div className="relative flex-1 min-w-[180px]">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar loteamento ou cidade..." className="pl-9 h-9" data-testid="map-search" />
       </div>
+      <Select value={lotSel} onValueChange={setLotSel}>
+        <SelectTrigger className="h-9 w-full sm:w-[200px]" data-testid="map-filter-lot"><SelectValue placeholder="Loteamento" /></SelectTrigger>
+        <SelectContent className="max-h-[300px]">
+          <SelectItem value="all">Todos os loteamentos</SelectItem>
+          {sortedLots.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
       <Select value={tipo} onValueChange={setTipo}>
         <SelectTrigger className="h-9 w-full sm:w-[140px]" data-testid="map-filter-tipo"><SelectValue /></SelectTrigger>
         <SelectContent>
