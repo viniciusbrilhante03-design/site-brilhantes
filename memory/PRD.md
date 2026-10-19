@@ -506,6 +506,12 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
   (auth WEBHOOK_CRON_SECRET, idempotente) → `_process_calendar_sync` sincroniza todos os usuários conectados. Sync refatorado
   em `_gcal_sync_user`. Validado: cron 200 com secret, 401 sem.
 
+### Iteração 38 (2026-06 fork) — Aba/botão "MAPA GERAL" ✅
+- Novo botão "Mapa Geral" no header do gestor (Dashboard) e do corretor (CorretorDashboard) → abre o mapa em tela larga (max-w-96vw, altura até 78vh) com LISTA lateral clicável de todos os loteamentos.
+- `GeneralMapDialog` ganhou prop `large`: layout com sidebar (lista) + mapa grande; clique no marcador OU no item da lista abre o detalhe do loteamento (com todas as integrações: Informações/Galeria/Vídeos/Mapa/Documentos/Copys/Base IA/IA Especialista).
+- Seleção propaga via `focusLot` para LoteamentosDialog (gestor) e CorretorLoteamentosDialog (corretor), que abrem o detalhe. Reaproveita o mapa já existente; versão pequena (dentro de Loteamentos) mantida.
+- Testado por screenshot em desktop (1920) e mobile (390) + clique abrindo o detalhe.
+
 ## Backlog (P1/P2)
 - P1: Acesso individual por corretor (login) + previsão de recebimento de comissão por corretor.
 - P1: Exportação CSV/PDF dos relatórios.

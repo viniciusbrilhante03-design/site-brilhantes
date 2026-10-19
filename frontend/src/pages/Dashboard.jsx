@@ -30,6 +30,7 @@ import CelebrationDialog from "@/components/CelebrationDialog";
 import AgendaDialog from "@/components/AgendaDialog";
 import ExportDialog from "@/components/ExportDialog";
 import LoteamentosDialog from "@/components/LoteamentosDialog";
+import GeneralMapDialog from "@/components/GeneralMapDialog";
 import AiSettingsDialog from "@/components/AiSettingsDialog";
 import ClientsDialog from "@/components/ClientsDialog";
 import BirthdaysDialog from "@/components/BirthdaysDialog";
@@ -39,7 +40,7 @@ import DuplicateWarningDialog from "@/components/DuplicateWarningDialog";
 import GoalsCard from "@/components/GoalsCard";
 import GoalsDialog from "@/components/GoalsDialog";
 
-import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake, Merge, Wallet, CalendarClock, Building2, Sparkles } from "lucide-react";
+import { LogOut, Moon, Sun, CalendarDays, UsersRound, Contact, Cake, Merge, Wallet, CalendarClock, Building2, Sparkles, MapPinned } from "lucide-react";
 
 const ALL = "all";
 const currentYear = new Date().getFullYear();
@@ -72,6 +73,8 @@ export default function Dashboard() {
   const [agendaOpen, setAgendaOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [lotsOpen, setLotsOpen] = useState(false);
+  const [mapaOpen, setMapaOpen] = useState(false);
+  const [focusLot, setFocusLot] = useState(null);
   const [aiOpen, setAiOpen] = useState(false);
 
   const params = useMemo(() => {
@@ -288,6 +291,11 @@ export default function Dashboard() {
               <Building2 className="h-4 w-4" /><span className="hidden md:inline">Loteamentos</span>
             </Button>
 
+            <Button data-testid="btn-open-mapa-geral" variant="outline" className="h-9 gap-1.5"
+              onClick={() => setMapaOpen(true)}>
+              <MapPinned className="h-4 w-4" /><span className="hidden md:inline">Mapa Geral</span>
+            </Button>
+
             <Button data-testid="btn-open-ai-settings" variant="outline" className="h-9 gap-1.5"
               onClick={() => setAiOpen(true)}>
               <Sparkles className="h-4 w-4" /><span className="hidden md:inline">IA</span>
@@ -421,7 +429,9 @@ export default function Dashboard() {
       />
       <AgendaDialog open={agendaOpen} onOpenChange={setAgendaOpen} clients={clientsQ.data || []} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} onExport={handleExport} />
-      <LoteamentosDialog open={lotsOpen} onOpenChange={setLotsOpen} />
+      <LoteamentosDialog open={lotsOpen} onOpenChange={(v) => { setLotsOpen(v); if (!v) setFocusLot(null); }} focusLot={focusLot} />
+      <GeneralMapDialog open={mapaOpen} onOpenChange={setMapaOpen} large
+        onSelectLot={(l) => { setMapaOpen(false); setFocusLot(l); setLotsOpen(true); }} />
       <AiSettingsDialog open={aiOpen} onOpenChange={setAiOpen} />
       <DuplicateWarningDialog
         open={dupOpen}

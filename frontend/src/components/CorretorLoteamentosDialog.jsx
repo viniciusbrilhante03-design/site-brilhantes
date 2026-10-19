@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -19,11 +19,13 @@ const PHASE_STYLE = {
 };
 const FILTERS = [["all", "Todos"], ["aberto", "Aberto"], ["fechado", "Fechado"]];
 
-export default function CorretorLoteamentosDialog({ open, onOpenChange }) {
+export default function CorretorLoteamentosDialog({ open, onOpenChange, focusLot }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
   const [detail, setDetail] = useState(null);
   const [mapOpen, setMapOpen] = useState(false);
+
+  useEffect(() => { if (open && focusLot) setDetail(focusLot); }, [open, focusLot]);
 
   const lotQ = useQuery({ queryKey: ["loteamentos"], queryFn: async () => (await api.get("/loteamentos")).data, enabled: open });
 

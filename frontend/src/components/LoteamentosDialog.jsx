@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import api from "@/lib/api";
@@ -25,7 +25,7 @@ const PHASE_STYLE = {
 };
 const FILTERS = [["all", "Todos"], ["aberto", "Aberto"], ["fechado", "Fechado"]];
 
-export default function LoteamentosDialog({ open, onOpenChange }) {
+export default function LoteamentosDialog({ open, onOpenChange, focusLot }) {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
@@ -33,6 +33,8 @@ export default function LoteamentosDialog({ open, onOpenChange }) {
   const [newName, setNewName] = useState("");
   const [detail, setDetail] = useState(null);
   const [mapOpen, setMapOpen] = useState(false);
+
+  useEffect(() => { if (open && focusLot) setDetail(focusLot); }, [open, focusLot]);
 
   const lotQ = useQuery({
     queryKey: ["loteamentos"],
