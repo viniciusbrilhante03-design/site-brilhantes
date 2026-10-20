@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Ruler, Building2, HardHat, MapPin, DollarSign, Plus, X } from "lucide-react";
 
 export const INFRA_OPTIONS = [
-  "Água", "Energia elétrica", "Pavimentação", "Ruas em bloquete intertravado", "Ruas em asfalto",
+  "Água", "Energia elétrica", "Pavimentação", "Ruas em bloquete intertravado", "Ruas asfaltadas",
   "Ruas em calçamento e pedra tosca", "Esgotamento sanitário", "Drenagem",
   "Iluminação pública", "Arborização", "Calçadas", "Área de lazer", "Clube", "Piscina",
   "Academia", "Academia ao ar livre", "Playground", "Pet Place", "Beach Tennis", "Quadra esportiva", "Portaria",
