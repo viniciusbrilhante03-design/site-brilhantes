@@ -5,7 +5,7 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UploadCloud, Trash2, Loader2, ImageIcon } from "lucide-react";
+import { UploadCloud, Trash2, Loader2, ImageIcon, GripVertical } from "lucide-react";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 
@@ -32,10 +32,12 @@ export default function LoteamentoGallery({ lotId, readOnly = false }) {
   const qc = useQueryClient();
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [dragId, setDragId] = useState(null);
+  const [order, setOrder] = useState(null);
 
   const listQ = useQuery({
     queryKey: ["lot-images", lotId],
-    queryFn: async () => (await api.get(`/loteamentos/${lotId}/images`)).data,
+    queryFn: async () => { const d = (await api.get(`/loteamentos/${lotId}/images`)).data; setOrder(null); return d; },
     enabled: !!lotId,
   });
 
@@ -70,7 +72,21 @@ export default function LoteamentoGallery({ lotId, readOnly = false }) {
     } finally { setUploading(false); if (inputRef.current) inputRef.current.value = ""; }
   };
 
-  const images = listQ.data || [];
+  const images = order || listQ.data || [];
+
+  const reorderMut = useMutation({
+    mutationFn: (ids) => api.post(`/loteamentos/${lotId}/images/reorder`, { ids }),
+    onSuccess: () => { invalidate(); qc.invalidateQueries({ queryKey: ["loteamentos"] }); toast.success("Ordem das fotos salva!"); },
+    onError: () => { setOrder(null); toast.error("Erro ao salvar a ordem."); },
+  });
+  const onDrop = (targetId) => {
+    if (!dragId || dragId === targetId) return setDragId(null);
+    const arr = [...images];
+    const from = arr.findIndex((x) => x.id === dragId), to = arr.findIndex((x) => x.id === targetId);
+    arr.splice(to, 0, arr.splice(from, 1)[0]);
+    setOrder(arr); setDragId(null);
+    reorderMut.mutate(arr.map((x) => x.id));
+  };
 
   return (
     <div className="space-y-3" data-testid="lot-gallery">
@@ -92,11 +108,20 @@ export default function LoteamentoGallery({ lotId, readOnly = false }) {
           <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-40" /> Nenhuma imagem ainda.
         </div>
       ) : (
+        <>
+        {!readOnly && images.length > 1 && <p className="text-xs text-muted-foreground flex items-center gap-1"><GripVertical className="h-3.5 w-3.5" /> Arraste as fotos para reordenar — a primeira é a capa.</p>}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {images.map((im) => (
-            <div key={im.id} data-testid={`lot-image-${im.id}`} className="rounded-xl border border-border/60 overflow-hidden bg-card">
+          {images.map((im, idx) => (
+            <div key={im.id} data-testid={`lot-image-${im.id}`}
+              draggable={!readOnly}
+              onDragStart={() => setDragId(im.id)}
+              onDragOver={(e) => { if (!readOnly) e.preventDefault(); }}
+              onDrop={(e) => { e.preventDefault(); onDrop(im.id); }}
+              onDragEnd={() => setDragId(null)}
+              className={`rounded-xl border overflow-hidden bg-card transition-opacity ${!readOnly ? "cursor-grab active:cursor-grabbing" : ""} ${dragId === im.id ? "opacity-40 border-primary" : "border-border/60"}`}>
               <div className="relative aspect-video bg-muted">
-                <img src={`${BACKEND}/api/loteamentos/images/${im.id}/raw`} alt={im.caption || "imagem"} className="w-full h-full object-cover" loading="lazy" />
+                <img src={`${BACKEND}/api/loteamentos/images/${im.id}/raw`} alt={im.caption || "imagem"} className="w-full h-full object-cover pointer-events-none" loading="lazy" />
+                {!readOnly && <span className="absolute top-1.5 left-1.5 rounded-md bg-black/60 text-white text-[10px] font-semibold px-1.5 py-0.5" data-testid={`lot-image-pos-${im.id}`}>{idx === 0 ? "Capa" : `#${idx + 1}`}</span>}
                 {!readOnly && (
                   <Button data-testid={`lot-image-del-${im.id}`} variant="destructive" size="icon"
                     className="absolute top-1.5 right-1.5 h-7 w-7" onClick={() => delMut.mutate(im.id)}>
@@ -127,6 +152,7 @@ export default function LoteamentoGallery({ lotId, readOnly = false }) {
             </div>
           ))}
         </div>
+        </>
       )}
     </div>
   );

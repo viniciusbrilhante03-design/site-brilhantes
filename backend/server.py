@@ -91,6 +91,26 @@ def _scope_query(user: dict) -> dict:
     return {"$or": [{"owner_id": uid}, {"broker_ids": uid}]}
 
 
+async def _find_scoped_sale(sale_id: str, user: dict):
+    s = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    if s and user.get("role") != "master" and not _sale_belongs(s, user):
+        return None
+    return s
+
+
+SALE_EDIT_DAYS = 60
+
+
+def _sale_edit_expired(sale: dict) -> bool:
+    try:
+        created = datetime.fromisoformat(str(sale.get("created_at")).replace("Z", "+00:00"))
+    except Exception:
+        return False
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - created > timedelta(days=SALE_EDIT_DAYS)
+
+
 def _user_names(user: dict) -> set:
     return {n for n in [(user.get("war_name") or "").strip().lower(),
                         (user.get("name") or "").strip().lower()] if n}
@@ -662,7 +682,7 @@ async def _resolve_corretor_by_name(name: str):
 @api_router.get("/loteamentos")
 async def list_loteamentos(user: dict = Depends(get_current_user)):
     docs = await db.loteamentos.find({}, {"_id": 0}).to_list(3000)
-    imgs = await db.lot_images.find({}, {"_id": 0, "id": 1, "lot_id": 1, "created_at": 1}).sort("created_at", 1).to_list(5000)
+    imgs = await db.lot_images.find({}, {"_id": 0, "id": 1, "lot_id": 1, "created_at": 1}).sort([("order", 1), ("created_at", 1)]).to_list(5000)
     cover = {}
     for im in imgs:
         cover.setdefault(im["lot_id"], im["id"])
@@ -867,6 +887,7 @@ def _lot_specs_to_text(doc: dict) -> str:
     items = [i for i in (infra.get("items") or []) if i and i.lower() != "outro"]
     if infra.get("outro"):
         items.append(infra["outro"])
+    items += [x for x in (infra.get("outros") or []) if x]
     if items:
         out.append("INFRAESTRUTURA:\n" + ", ".join(items))
 
@@ -1134,7 +1155,7 @@ class LotImageMeta(BaseModel):
 
 @api_router.get("/loteamentos/{lot_id}/images", response_model=List[LotImageMeta])
 async def list_lot_images(lot_id: str, user: dict = Depends(get_current_user)):
-    docs = await db.lot_images.find({"lot_id": lot_id}, {"_id": 0, "data": 0}).sort("created_at", 1).to_list(100)
+    docs = await db.lot_images.find({"lot_id": lot_id}, {"_id": 0, "data": 0}).sort([("order", 1), ("created_at", 1)]).to_list(300)
     return [LotImageMeta(**{k: d.get(k, "") for k in ("id", "lot_id", "type", "caption", "content_type", "created_at")}) for d in docs]
 
 
@@ -1155,10 +1176,19 @@ async def upload_lot_image(lot_id: str, file: UploadFile = File(...), type: str 
         "type": type if type in _LOT_IMG_TYPES else "foto", "caption": (caption or "").strip(),
         "filename": file.filename or "imagem", "content_type": ctype,
         "data": base64.b64encode(content).decode("ascii"),
+        "order": await db.lot_images.count_documents({"lot_id": lot_id}),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.lot_images.insert_one(doc)
     return LotImageMeta(**{k: doc[k] for k in ("id", "lot_id", "type", "caption", "content_type", "created_at")})
+
+
+@api_router.post("/loteamentos/{lot_id}/images/reorder")
+async def reorder_lot_images(lot_id: str, request: Request, user: dict = Depends(require_master)):
+    ids = (await request.json()).get("ids") or []
+    for i, iid in enumerate(ids):
+        await db.lot_images.update_one({"id": iid, "lot_id": lot_id}, {"$set": {"order": i}})
+    return {"ok": True}
 
 
 @api_router.get("/loteamentos/images/{img_id}/raw")
@@ -1308,38 +1338,68 @@ async def ai_extract_fields(lot_id: str, file: UploadFile = File(...), user: dic
     content = await file.read()
     name = (file.filename or "").lower()
     text = ""
+    page_imgs = []
     if name.endswith(".pdf"):
         try:
             import pdfplumber
+            parts = []
             with pdfplumber.open(io.BytesIO(content)) as pdf:
-                text = "\n".join((p.extract_text() or "") for p in pdf.pages[:15])
+                for i, p in enumerate(pdf.pages[:80]):
+                    parts.append(f"--- Página {i + 1} ---\n{p.extract_text() or ''}")
+                    for tb in p.extract_tables() or []:
+                        parts.append("\n".join(" | ".join(str(c or "") for c in r) for r in tb))
+            text = "\n".join(parts)
         except Exception as e:
             logger.error(f"pdf extract failed: {e}")
+        if len(re.sub(r"--- Página \d+ ---|\s", "", text)) < 300:
+            try:
+                import pypdfium2 as pdfium
+                pdf = pdfium.PdfDocument(content)
+                for i in range(min(len(pdf), 12)):
+                    pil = pdf[i].render(scale=1.3).to_pil().convert("RGB")
+                    pil.thumbnail((1400, 1400))
+                    b = io.BytesIO()
+                    pil.save(b, format="JPEG", quality=75)
+                    page_imgs.append(base64.b64encode(b.getvalue()).decode("ascii"))
+            except Exception as e:
+                logger.error(f"pdf render failed: {e}")
+    elif (file.content_type or "").startswith("image/"):
+        page_imgs.append(base64.b64encode(content).decode("ascii"))
     else:
-        try:
-            text = content.decode("utf-8", "ignore")
-        except Exception:
-            text = ""
-    text = (text or "").strip()[:12000]
-    if not text:
-        raise HTTPException(status_code=400, detail="Não consegui ler texto do arquivo. Envie um PDF com texto ou um .txt/.csv.")
-    system = ("Extraia dados de um loteamento a partir do texto. Responda SOMENTE um JSON com as chaves: "
-              "comercial{valor_a_partir,entrada_minima,max_parcelas}, localizacao{cidade,estado,bairro}, "
-              "tecnicos{metragem_min,metragem_max,tipo}, resumo. "
-              "Em valor_a_partir use o MENOR preço encontrado (formato '85.000'). tipo deve ser 'aberto' ou 'fechado'. "
-              "resumo: 1-2 frases úteis para treinar a IA. Deixe '' no que não encontrar. NUNCA invente.")
+        text = content.decode("utf-8", "ignore")
+    text = (text or "").strip()[:90000]
+    if not text and not page_imgs:
+        raise HTTPException(status_code=400, detail="Não consegui ler o arquivo. Envie PDF, imagem, .txt ou .csv.")
+    system = (
+        "Você é um analista imobiliário MINUCIOSO. Leia TODO o material (book/tabela/memorial) de um loteamento, página por página, "
+        "e extraia o MÁXIMO de informações. Responda SOMENTE um JSON com as chaves:\n"
+        "tecnicos{metragem_min,metragem_max,area_total,qtd_lotes,qtd_quadras,tipo,liberacao_pct,prazo_construcao,restricoes},\n"
+        "infraestrutura{items:[lista de itens de infraestrutura e lazer citados, ex: 'Água','Energia elétrica','Ruas em asfalto','Piscina','Guarita','Academia ao ar livre']},\n"
+        "obra{status,percentual,previsao,data_entrega,observacao},\n"
+        "localizacao{cidade,estado,bairro,endereco,coords,dist_centro,dist_praia,dist_pontos,acessos},\n"
+        "comercial{valor_a_partir,entrada_minima,max_parcelas,valor_parcela_inicial,financiamento,correcao,periodicidade,juros,juros_pct,balao,baloes_qtd,baloes_periodicidade,baloes_valor,condicoes_especiais,diferenciais},\n"
+        "resumo.\n"
+        "Regras: valor_a_partir = MENOR preço (formato '85.000'). tipo = 'aberto' ou 'fechado'. "
+        "obra.status ∈ nao_iniciada|em_andamento|fase_final|concluida|entregue. correcao ∈ sem|ipca|igpm|outro. "
+        "juros ∈ sem|com. balao ∈ nao|possui. diferenciais e condicoes_especiais: texto completo com TODOS os itens encontrados. "
+        "resumo: resumo DETALHADO e organizado em tópicos (até ~600 palavras) com TODAS as informações relevantes para um corretor vender "
+        "(conceito, localização, lazer, infraestrutura, metragens, valores, condições, prazos, diferenciais, construtora, contatos). "
+        "Deixe '' no que não encontrar. NUNCA invente.")
+    user_content = [{"type": "text", "text": text or "Material em imagens (páginas do arquivo)."}]
+    for b64 in page_imgs:
+        user_content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
     try:
         comp = await _get_openai(key).chat.completions.create(
             model=await _ai_model(),
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": text}],
-            temperature=0, response_format={"type": "json_object"})
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user_content}],
+            temperature=0, max_tokens=4000, response_format={"type": "json_object"})
         await _record_ai_usage(comp)
         import json as _json
         data = _json.loads(comp.choices[0].message.content or "{}")
     except Exception as e:
         logger.error(f"ai-extract failed: {e}")
         raise HTTPException(status_code=502, detail="Falha ao interpretar o arquivo com a IA.")
-    return {"suggestions": data, "excerpt": text[:400]}
+    return {"suggestions": data, "excerpt": text[:400], "book_text": text[:40000], "filename": file.filename or "arquivo"}
 
 
 @api_router.patch("/loteamentos/{lot_id}/specs-merge")
@@ -1353,12 +1413,21 @@ async def merge_specs(lot_id: str, request: Request, user: dict = Depends(requir
         if isinstance(vals, dict):
             specs.setdefault(section, {})
             for k, v in vals.items():
-                if v not in (None, ""):
+                if isinstance(v, list):
+                    cur = specs[section].get(k) or []
+                    specs[section][k] = cur + [x for x in v if x and x not in cur]
+                elif v not in (None, ""):
                     specs[section][k] = v
     upd = {"specs": specs}
     at = (body.get("append_training") or "").strip()
     if at:
         upd["ai_training"] = ((doc.get("ai_training") or "") + "\n" + at).strip()
+    book = (body.get("book_text") or "").strip()
+    if book:
+        await db.loteamentos.update_one({"id": lot_id}, {"$push": {"knowledge": {
+            "id": f"kn_{uuid.uuid4().hex[:8]}", "type": "texto",
+            "title": f"Arquivo: {(body.get('book_title') or 'book').strip()}", "content": book[:40000],
+            "question": "", "answer": "", "created_at": datetime.now(timezone.utc).isoformat()}}})
     loc = specs.get("localizacao") or {}
     lat, lng = _parse_latlng(loc.get("coords"))
     if lat is None:
@@ -1810,9 +1879,11 @@ async def create_sale(data: SaleCreate, force: bool = False, force_lot: bool = F
 
 @api_router.put("/sales/{sale_id}", response_model=Sale)
 async def update_sale(sale_id: str, data: SaleCreate, user: dict = Depends(get_current_user)):
-    existing = await db.sales.find_one({"id": sale_id, **_scope_query(user)}, {"_id": 0})
+    existing = await _find_scoped_sale(sale_id, user)
     if not existing:
         raise HTTPException(status_code=404, detail="Venda não encontrada")
+    if user.get("role") == "corretor" and _sale_edit_expired(existing):
+        raise HTTPException(status_code=403, detail="Prazo de edição expirado (60 dias após o cadastro). Contate o gestor.")
     payload = data.model_dump()
     extra = {}
     if user.get("role") == "corretor":
@@ -1838,7 +1909,7 @@ async def update_sale(sale_id: str, data: SaleCreate, user: dict = Depends(get_c
 
 @api_router.delete("/sales/{sale_id}")
 async def delete_sale(sale_id: str, user: dict = Depends(get_current_user)):
-    sale = await db.sales.find_one({"id": sale_id, **_scope_query(user)}, {"_id": 0})
+    sale = await _find_scoped_sale(sale_id, user)
     if not sale:
         raise HTTPException(status_code=404, detail="Venda não encontrada")
     sale["deleted_at"] = datetime.now(timezone.utc).isoformat()
@@ -1852,7 +1923,7 @@ async def delete_sale(sale_id: str, user: dict = Depends(get_current_user)):
 
 @api_router.patch("/sales/{sale_id}/installments/{number}")
 async def toggle_installment(sale_id: str, number: int, user: dict = Depends(get_current_user)):
-    sale = await db.sales.find_one({"id": sale_id, **_scope_query(user)}, {"_id": 0})
+    sale = await _find_scoped_sale(sale_id, user)
     if not sale:
         raise HTTPException(status_code=404, detail="Venda não encontrada")
     installments = sale.get("installments", [])
@@ -1902,7 +1973,7 @@ def _recompute_inst(inst):
 
 @api_router.post("/sales/{sale_id}/installments/{number}/baixa")
 async def baixa_installment(sale_id: str, number: int, request: Request, user: dict = Depends(get_current_user)):
-    sale = await db.sales.find_one({"id": sale_id, **_scope_query(user)}, {"_id": 0})
+    sale = await _find_scoped_sale(sale_id, user)
     if not sale:
         raise HTTPException(status_code=404, detail="Venda não encontrada")
     body = await request.json()

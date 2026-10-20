@@ -19,7 +19,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { brl, formatDateBR, splitComm } from "@/lib/format";
-import { Search, Pencil, Trash2, Wallet, Plus, Upload, Paperclip, Download, SlidersHorizontal, X, Copy, ArrowRightLeft, Ban } from "lucide-react";
+import { Search, Pencil, Trash2, Wallet, Plus, Upload, Paperclip, Download, SlidersHorizontal, X, Copy, ArrowRightLeft, Ban, Lock } from "lucide-react";
+import { toast } from "sonner";
 
 const ALL = "all";
 const emptyFilters = { lot: ALL, broker: ALL, status: ALL, client: "", quadra: "", lote: "", start: "", end: "" };
@@ -29,7 +30,7 @@ function statusOf(s) {
   return (s.installments || []).some((i) => !i.received) ? "receber" : "quitado";
 }
 
-export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicate, onDelete, onTransfer, onCancel, onOpenInstallments, onImport, onOpenExport, onOpenAttachments, bulkEnabled = false, brokers = [], onBulkDelete, onBulkTransfer }) {
+export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicate, onDelete, onTransfer, onCancel, onOpenInstallments, onImport, onOpenExport, onOpenAttachments, bulkEnabled = false, brokers = [], onBulkDelete, onBulkTransfer, editDeadlineDays }) {
   const [q, setQ] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [f, setF] = useState(emptyFilters);
@@ -287,10 +288,18 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
                           title="Fluxo a receber" onClick={() => onOpenInstallments(s)}>
                           <Wallet className="h-4 w-4" />
                         </Button>
-                        <Button data-testid={`btn-edit-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
-                          title="Editar" onClick={() => onEdit(s)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                        {editDeadlineDays && s.created_at && (Date.now() - new Date(s.created_at).getTime()) > editDeadlineDays * 864e5 ? (
+                          <Button data-testid={`btn-edit-locked-${s.id}`} variant="ghost" size="icon" className="h-8 w-8 opacity-50"
+                            title="Prazo de edição expirado, contate o gestor"
+                            onClick={() => toast.warning("Prazo de edição expirado, contate o gestor.")}>
+                            <Lock className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button data-testid={`btn-edit-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
+                            title="Editar" onClick={() => onEdit(s)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
                         {onDuplicate && (
                           <Button data-testid={`btn-duplicate-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
                             title="Duplicar (novo lote p/ mesmo cliente)" onClick={() => onDuplicate(s)}>

@@ -14,6 +14,8 @@ import LoteamentoDocs from "@/components/LoteamentoDocs";
 import LoteamentoCopys from "@/components/LoteamentoCopys";
 
 const INFRA_LABEL = "Infraestrutura";
+const CORRECAO = { sem: "Sem correção", ipca: "IPCA", igpm: "IGP-M" };
+const OBRA = { nao_iniciada: "Não iniciada", em_andamento: "Em andamento", fase_final: "Fase final", concluida: "Concluída", entregue: "Entregue" };
 
 function Row({ label, value }) {
   if (!value) return null;
@@ -22,29 +24,56 @@ function Row({ label, value }) {
 
 function Resumo({ specs, copy }) {
   const s = specs || {};
-  const t = s.tecnicos || {}, loc = s.localizacao || {}, c = s.comercial || {}, infra = s.infraestrutura || {};
+  const t = s.tecnicos || {}, loc = s.localizacao || {}, c = s.comercial || {}, infra = s.infraestrutura || {}, o = s.obra || {};
   const infraItems = [...(infra.items || [])].filter((x) => x !== "Outro");
   if (infra.outro) infraItems.push(infra.outro);
+  (infra.outros || []).forEach((x) => { if (x && !infraItems.includes(x)) infraItems.push(x); });
+  const corr = c.correcao === "outro" ? c.correcao_outro : CORRECAO[c.correcao];
+  const juros = c.juros === "sem" ? "Sem juros" : c.juros === "com" ? `Com juros${c.juros_pct ? ` (${c.juros_pct}%)` : ""}${c.juros_tipo === "embutidos" ? " · Tabela Price" : c.juros_tipo === "nao_embutidos" ? " · Tabela SAC" : ""}` : "";
+  const balao = c.balao === "nao" ? "Não possui" : c.balao === "possui" ? [c.baloes_qtd && `${c.baloes_qtd} balão(ões)`, c.baloes_periodicidade, c.baloes_valor, c.baloes_vencimentos].filter(Boolean).join(" · ") || "Possui" : "";
   return (
     <div className="space-y-4" data-testid="corretor-lot-resumo">
-      <div className="rounded-xl border border-border/60 p-3 space-y-1.5">
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Técnico</div>
+      <div className="rounded-xl border border-border/60 p-3 space-y-1.5" data-testid="corretor-lot-tecnico">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Informações técnicas</div>
         <Row label="Metragem" value={[t.metragem_min, t.metragem_max].filter(Boolean).join(" a ")} />
+        <Row label="Área total" value={t.area_total} />
         <Row label="Qtd. de lotes" value={t.qtd_lotes} />
+        <Row label="Qtd. de quadras" value={t.qtd_quadras} />
         <Row label="Tipo" value={t.tipo === "fechado" ? "Loteamento fechado" : t.tipo === "aberto" ? "Loteamento aberto" : ""} />
+        <Row label="Liberação p/ construir" value={t.liberacao_pct && `${t.liberacao_pct}% do lote pago`} />
+        <Row label="Prazo p/ construção" value={t.prazo_construcao} />
+        <Row label="Restrições" value={t.restricoes} />
       </div>
+      {(o.status || o.previsao || o.percentual) && (
+        <div className="rounded-xl border border-border/60 p-3 space-y-1.5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status da obra</div>
+          <Row label="Status" value={OBRA[o.status] || o.status} />
+          <Row label="Percentual" value={o.percentual && `${o.percentual}%`} />
+          <Row label="Previsão de entrega" value={o.previsao} />
+          <Row label="Data de entrega" value={o.data_entrega} />
+          <Row label="Observação" value={o.observacao} />
+        </div>
+      )}
       <div className="rounded-xl border border-border/60 p-3 space-y-1.5">
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Valores</div>
-        <Row label="A partir de" value={c.valor_a_partir && `R$ ${c.valor_a_partir}`} />
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Valores e condições</div>
+        <Row label="A partir de" value={c.valor_a_partir && `R$ ${c.valor_a_partir}${c.valor_ref ? ` (${c.valor_ref})` : ""}`} />
         <Row label="Entrada mínima" value={c.entrada_minima} />
         <Row label="Máx. parcelas" value={c.max_parcelas} />
         <Row label="Parcela inicial" value={c.valor_parcela_inicial} />
+        <Row label="Financiamento" value={c.financiamento} />
+        <Row label="Correção" value={corr && `${corr}${c.periodicidade ? ` · ${c.periodicidade === "outra" ? c.periodicidade_outra : c.periodicidade}` : ""}`} />
+        <Row label="Juros" value={juros} />
+        <Row label="Balão" value={balao} />
       </div>
       <div className="rounded-xl border border-border/60 p-3 space-y-1.5">
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Localização</div>
         <Row label="Cidade/UF" value={[loc.cidade, loc.estado].filter(Boolean).join(" - ")} />
         <Row label="Bairro" value={loc.bairro} />
         <Row label="Endereço" value={loc.endereco} />
+        <Row label="Dist. do centro" value={loc.dist_centro} />
+        <Row label="Dist. da praia" value={loc.dist_praia} />
+        <Row label="Pontos relevantes" value={loc.dist_pontos} />
+        <Row label="Acessos" value={loc.acessos} />
         {loc.maps && <a href={loc.maps} target="_blank" rel="noreferrer" className="text-sm text-primary inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> Abrir no Google Maps</a>}
       </div>
       {infraItems.length > 0 && (

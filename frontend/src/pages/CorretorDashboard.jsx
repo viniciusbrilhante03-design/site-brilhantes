@@ -72,7 +72,7 @@ export default function CorretorDashboard() {
   const createMut = useMutation({
     mutationFn: (payload) => (editing?.id ? api.put(`/sales/${editing.id}`, payload) : api.post("/sales", payload)),
     onSuccess: (res) => { invalidateAll(); setFormOpen(false); const wasEdit = editing?.id; setEditing(null); if (wasEdit) { toast.success("Venda atualizada!"); } else { setCelebrateSale(res.data); } },
-    onError: (err, variables) => { if (err?.response?.status === 409 && !editing?.id) { setDupPayload(variables); setDupOpen(true); } else { toast.error("Erro ao salvar venda."); } },
+    onError: (err, variables) => { if (err?.response?.status === 409 && !editing?.id) { setDupPayload(variables); setDupOpen(true); } else { const d = err?.response?.data?.detail; toast.error(typeof d === "string" ? d : "Erro ao salvar venda."); } },
   });
   const forceCreateMut = useMutation({
     mutationFn: (payload) => api.post("/sales?force=true", payload),
@@ -191,6 +191,7 @@ export default function CorretorDashboard() {
               onImport={() => toast.info("Importação disponível no painel do gestor.")}
               onOpenExport={() => setExportOpen(true)}
               onOpenAttachments={(x) => setAttachSale(x)}
+              editDeadlineDays={60}
             />
           </div>
           <div className="space-y-6 min-w-0"><RankingCard /><GoalsCard goals={goalsQ.data} /></div>

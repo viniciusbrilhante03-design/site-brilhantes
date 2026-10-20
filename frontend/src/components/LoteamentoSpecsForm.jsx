@@ -5,18 +5,26 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Ruler, Building2, HardHat, MapPin, DollarSign } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Ruler, Building2, HardHat, MapPin, DollarSign, Plus, X } from "lucide-react";
 
 export const INFRA_OPTIONS = [
-  "Água", "Energia elétrica", "Pavimentação", "Esgotamento sanitário", "Drenagem",
+  "Água", "Energia elétrica", "Pavimentação", "Ruas em bloquete intertravado", "Ruas em asfalto",
+  "Ruas em calçamento e pedra tosca", "Esgotamento sanitário", "Drenagem",
   "Iluminação pública", "Arborização", "Calçadas", "Área de lazer", "Clube", "Piscina",
-  "Academia", "Playground", "Pet Place", "Beach Tennis", "Quadra esportiva", "Portaria",
-  "Controle de acesso", "Área verde", "Lago", "Outro",
+  "Academia", "Academia ao ar livre", "Playground", "Pet Place", "Beach Tennis", "Quadra esportiva", "Portaria",
+  "Guarita", "Controle de acesso", "Área verde", "Lago", "Outro",
 ];
+
+const outrosList = (infra) => {
+  const arr = [...(infra.outros || [])];
+  if (infra.outro && !arr.includes(infra.outro)) arr.unshift(infra.outro);
+  return arr.length ? arr : [""];
+};
 
 export const EMPTY_SPECS = {
   tecnicos: { metragem_min: "", metragem_max: "", area_total: "", qtd_lotes: "", qtd_quadras: "", tipo: "", liberacao_pct: "", prazo_construcao: "", restricoes: "" },
-  infraestrutura: { items: [], outro: "" },
+  infraestrutura: { items: [], outro: "", outros: [] },
   obra: { status: "", percentual: "", previsao: "", data_entrega: "", observacao: "" },
   localizacao: { cidade: "", estado: "", bairro: "", endereco: "", maps: "", coords: "", dist_centro: "", dist_praia: "", dist_pontos: "", acessos: "" },
   comercial: { valor_a_partir: "", valor_ref: "", entrada_minima: "", max_parcelas: "", valor_parcela_inicial: "", financiamento: "Próprio do loteamento", correcao: "", correcao_outro: "", periodicidade: "", periodicidade_outra: "", juros: "", juros_pct: "", juros_tipo: "", balao: "", baloes_qtd: "", baloes_periodicidade: "", baloes_valor: "", baloes_vencimentos: "", condicoes_especiais: "", diferenciais: "" },
@@ -49,6 +57,9 @@ export default function LoteamentoSpecsForm({ value, onChange }) {
     const next = items.includes(opt) ? items.filter((x) => x !== opt) : [...items, opt];
     onChange({ ...v, infraestrutura: { ...v.infraestrutura, items: next } });
   };
+
+  const outros = outrosList(v.infraestrutura);
+  const setOutros = (arr) => onChange({ ...v, infraestrutura: { ...v.infraestrutura, outro: "", outros: arr } });
 
   const t = v.tecnicos, o = v.obra, loc = v.localizacao, c = v.comercial;
 
@@ -95,7 +106,20 @@ export default function LoteamentoSpecsForm({ value, onChange }) {
             ))}
           </div>
           {(v.infraestrutura.items || []).includes("Outro") && (
-            <div className="mt-2"><Input data-testid="infra-outro" value={v.infraestrutura.outro} onChange={(e) => up("infraestrutura", "outro", e.target.value)} placeholder="Especifique a infraestrutura" /></div>
+            <div className="mt-2 space-y-2" data-testid="infra-outros">
+              {outros.map((val, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input data-testid={`infra-outro-${i}`} value={val} placeholder="Especifique a infraestrutura"
+                    onChange={(e) => setOutros(outros.map((x, j) => (j === i ? e.target.value : x)))} />
+                  {outros.length > 1 && (
+                    <Button type="button" variant="ghost" size="icon" data-testid={`infra-outro-del-${i}`}
+                      onClick={() => setOutros(outros.filter((_, j) => j !== i))}><X className="h-4 w-4" /></Button>
+                  )}
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" className="gap-1" data-testid="infra-outro-add"
+                onClick={() => setOutros([...outros, ""])}><Plus className="h-4 w-4" /> Adicionar outro</Button>
+            </div>
           )}
         </AccordionContent>
       </AccordionItem>

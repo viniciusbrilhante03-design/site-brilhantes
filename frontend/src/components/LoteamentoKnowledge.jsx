@@ -24,8 +24,8 @@ export default function LoteamentoKnowledge({ lotId }) {
   const [extracting, setExtracting] = useState(false);
   const [sugg, setSugg] = useState(null);   // {partial, resumo}
 
-  const SEC_LABEL = { comercial: "Valores", localizacao: "Localização", tecnicos: "Técnico" };
-  const FIELD_LABEL = { valor_a_partir: "Valor a partir de", entrada_minima: "Entrada mínima", max_parcelas: "Máx. parcelas", cidade: "Cidade", estado: "Estado", bairro: "Bairro", metragem_min: "Metragem mín.", metragem_max: "Metragem máx.", tipo: "Tipo" };
+  const SEC_LABEL = { comercial: "Valores", localizacao: "Localização", tecnicos: "Técnico", infraestrutura: "Infraestrutura", obra: "Obra" };
+  const FIELD_LABEL = { valor_a_partir: "Valor a partir de", entrada_minima: "Entrada mínima", max_parcelas: "Máx. parcelas", valor_parcela_inicial: "Parcela inicial", financiamento: "Financiamento", correcao: "Correção", periodicidade: "Periodicidade", juros: "Juros", juros_pct: "Juros %", balao: "Balão", baloes_qtd: "Qtd. balões", baloes_periodicidade: "Period. balões", baloes_valor: "Valor balões", condicoes_especiais: "Condições especiais", diferenciais: "Diferenciais", cidade: "Cidade", estado: "Estado", bairro: "Bairro", endereco: "Endereço", coords: "Coordenadas", dist_centro: "Dist. centro", dist_praia: "Dist. praia", dist_pontos: "Pontos relevantes", acessos: "Acessos", metragem_min: "Metragem mín.", metragem_max: "Metragem máx.", area_total: "Área total", qtd_lotes: "Qtd. lotes", qtd_quadras: "Qtd. quadras", tipo: "Tipo", liberacao_pct: "Liberação %", prazo_construcao: "Prazo construção", restricoes: "Restrições", items: "Itens", status: "Status", percentual: "Percentual", previsao: "Previsão", data_entrega: "Data entrega", observacao: "Observação" };
 
   const onExtract = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -35,11 +35,14 @@ export default function LoteamentoKnowledge({ lotId }) {
       const res = await api.post(`/loteamentos/${lotId}/ai-extract`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       const data = res.data.suggestions || {};
       const partial = {};
-      ["comercial", "localizacao", "tecnicos"].forEach((sec) => {
+      ["tecnicos", "infraestrutura", "obra", "localizacao", "comercial"].forEach((sec) => {
         const v = data[sec] || {};
-        Object.entries(v).forEach(([k, val]) => { if (val) { partial[sec] = partial[sec] || {}; partial[sec][k] = { value: String(val), ok: true }; } });
+        Object.entries(v).forEach(([k, val]) => {
+          const str = Array.isArray(val) ? val.filter(Boolean).join(", ") : String(val ?? "");
+          if (str.trim()) { partial[sec] = partial[sec] || {}; partial[sec][k] = { value: str, ok: true }; }
+        });
       });
-      setSugg({ partial, resumo: data.resumo || "" });
+      setSugg({ partial, resumo: data.resumo || "", book: res.data.book_text || "", filename: res.data.filename || f.name });
       if (Object.keys(partial).length === 0 && !data.resumo) toast.info("A IA não encontrou campos reconhecíveis no arquivo.");
     } catch (err) { toast.error(err?.response?.data?.detail || "Falha ao interpretar o arquivo."); }
     finally { setExtracting(false); if (fileRef.current) fileRef.current.value = ""; }
@@ -53,9 +56,11 @@ export default function LoteamentoKnowledge({ lotId }) {
   const applySugg = () => {
     const sp = {};
     Object.entries(sugg.partial).forEach(([sec, fields]) => {
-      Object.entries(fields).forEach(([k, o]) => { if (o.ok && o.value) { sp[sec] = sp[sec] || {}; sp[sec][k] = o.value; } });
+      Object.entries(fields).forEach(([k, o]) => {
+        if (o.ok && o.value) { sp[sec] = sp[sec] || {}; sp[sec][k] = k === "items" ? o.value.split(",").map((x) => x.trim()).filter(Boolean) : o.value; }
+      });
     });
-    applyMut.mutate({ specs_partial: sp, append_training: sugg.resumo || "" });
+    applyMut.mutate({ specs_partial: sp, append_training: sugg.resumo || "", book_text: sugg.book || "", book_title: sugg.filename || "" });
   };
 
   const detQ = useQuery({ queryKey: ["lot-details", lotId], queryFn: async () => (await api.get(`/loteamentos/${lotId}/details`)).data, enabled: !!lotId });
@@ -81,7 +86,7 @@ export default function LoteamentoKnowledge({ lotId }) {
       <div className="rounded-xl border border-[hsl(var(--gold)/0.4)] bg-[hsl(var(--gold)/0.06)] p-3 space-y-2">
         <div className="font-semibold text-sm flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-[hsl(var(--gold))]" /> Enviar arquivo p/ a IA sugerir o preenchimento</div>
         <p className="text-xs text-muted-foreground">Book, tabela de preços, PDF ou memorial. A IA lê e sugere os campos — você confirma antes de aplicar.</p>
-        <input ref={fileRef} type="file" accept="application/pdf,.txt,.csv" className="hidden" onChange={onExtract} data-testid="kn-extract-input" />
+        <input ref={fileRef} type="file" accept="application/pdf,.txt,.csv,image/*" className="hidden" onChange={onExtract} data-testid="kn-extract-input" />
         <Button variant="outline" size="sm" className="gap-1.5" disabled={extracting} onClick={() => fileRef.current?.click()} data-testid="kn-extract-btn">
           {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />} {extracting ? "Lendo com a IA..." : "Enviar arquivo"}
         </Button>
@@ -102,7 +107,8 @@ export default function LoteamentoKnowledge({ lotId }) {
                 ))}
               </div>
             ))}
-            {sugg.resumo && <div className="text-xs"><span className="text-muted-foreground">Resumo p/ treino: </span>{sugg.resumo}</div>}
+            {sugg.resumo && <div className="text-xs whitespace-pre-wrap max-h-60 overflow-y-auto" data-testid="kn-sugg-resumo"><span className="text-muted-foreground">Resumo p/ treino: </span>{sugg.resumo}</div>}
+            {sugg.book && <div className="text-[11px] text-muted-foreground">O conteúdo completo do arquivo também será salvo na base de conhecimento da IA.</div>}
             <div className="flex gap-2 pt-1">
               <Button size="sm" onClick={applySugg} disabled={applyMut.isPending} data-testid="kn-sugg-apply">Aplicar selecionados</Button>
               <Button size="sm" variant="ghost" onClick={() => setSugg(null)} data-testid="kn-sugg-cancel">Ignorar</Button>
