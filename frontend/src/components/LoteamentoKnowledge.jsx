@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { INFRA_OPTIONS } from "@/components/LoteamentoSpecsForm";
 import { Plus, Trash2, HelpCircle, Link2, FileText, MessageSquare, Sparkles, UploadCloud, Loader2, Check, X } from "lucide-react";
 
 const TYPES = [["texto", "Texto/Nota"], ["link", "Link de site"], ["qa", "Pergunta e resposta"]];
@@ -60,6 +61,13 @@ export default function LoteamentoKnowledge({ lotId }) {
         if (o.ok && o.value) { sp[sec] = sp[sec] || {}; sp[sec][k] = k === "items" ? o.value.split(",").map((x) => x.trim()).filter(Boolean) : o.value; }
       });
     });
+    if (sp.infraestrutura?.items) {
+      const norm = (x) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const known = [], extra = [];
+      sp.infraestrutura.items.forEach((x) => { const m = INFRA_OPTIONS.find((o) => norm(o) === norm(x)); m ? known.push(m) : extra.push(x); });
+      if (extra.length) known.push("Outro");
+      sp.infraestrutura = { items: known, outros: extra };
+    }
     applyMut.mutate({ specs_partial: sp, append_training: sugg.resumo || "", book_text: sugg.book || "", book_title: sugg.filename || "" });
   };
 

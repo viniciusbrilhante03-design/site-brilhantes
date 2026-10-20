@@ -28,9 +28,9 @@ function Resumo({ specs, copy }) {
   const infraItems = [...(infra.items || [])].filter((x) => x !== "Outro");
   if (infra.outro) infraItems.push(infra.outro);
   (infra.outros || []).forEach((x) => { if (x && !infraItems.includes(x)) infraItems.push(x); });
-  const corr = c.correcao === "outro" ? c.correcao_outro : CORRECAO[c.correcao];
-  const juros = c.juros === "sem" ? "Sem juros" : c.juros === "com" ? `Com juros${c.juros_pct ? ` (${c.juros_pct}%)` : ""}${c.juros_tipo === "embutidos" ? " · Tabela Price" : c.juros_tipo === "nao_embutidos" ? " · Tabela SAC" : ""}` : "";
-  const balao = c.balao === "nao" ? "Não possui" : c.balao === "possui" ? [c.baloes_qtd && `${c.baloes_qtd} balão(ões)`, c.baloes_periodicidade, c.baloes_valor, c.baloes_vencimentos].filter(Boolean).join(" · ") || "Possui" : "";
+  const corr = c.correcao === "outro" ? c.correcao_outro : (CORRECAO[(c.correcao || "").toLowerCase()] || c.correcao);
+  const juros = c.juros === "sem" ? "Sem juros" : c.juros === "com" ? `Com juros${c.juros_pct ? ` (${c.juros_pct}${String(c.juros_pct).includes("%") ? "" : "%"})` : ""}${c.juros_tipo === "embutidos" ? " · Tabela Price" : c.juros_tipo === "nao_embutidos" ? " · Tabela SAC" : ""}` : "";
+  const balao = c.balao === "nao" ? "Não possui" : c.balao === "possui" ? [c.baloes_qtd && (/^\d+$/.test(String(c.baloes_qtd).trim()) ? `${c.baloes_qtd} balão(ões)` : c.baloes_qtd), c.baloes_periodicidade, c.baloes_valor, c.baloes_vencimentos].filter(Boolean).join(" · ") || "Possui" : "";
   return (
     <div className="space-y-4" data-testid="corretor-lot-resumo">
       <div className="rounded-xl border border-border/60 p-3 space-y-1.5" data-testid="corretor-lot-tecnico">

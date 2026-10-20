@@ -523,3 +523,14 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
 ## Próximas tarefas sugeridas
 - Exportar relatório do período em PDF/CSV.
 - Metas mensais e alerta de parcelas vencendo.
+
+## 2026-06 — Fork: 5 pedidos + Base IA
+- Corretor edita própria venda até 60 dias após cadastro (created_at); depois botão bloqueado (cadeado) com aviso. Corrigido 404 (escopo por nome via _find_scoped_sale).
+- Resumo do corretor: seção "Informações técnicas" completa + obra + condições (correção/juros/balão) + distâncias.
+- Galeria: arrastar e soltar para reordenar (primeira = capa) — POST /api/loteamentos/{id}/images/reorder.
+- Infra: Ruas em bloquete intertravado, Ruas em asfalto, Ruas em calçamento e pedra tosca, Academia ao ar livre, Guarita.
+- "Outro" com múltiplas entradas (specs.infraestrutura.outros[]).
+- Base IA: leitura do arquivo inteiro (até 80 págs + tabelas, OCR via visão p/ PDF escaneado/imagem), extração de todos os campos, resumo detalhado, texto completo salvo na base de conhecimento; normalização de enums.
+- Testes: iteration_19 (100%).
+## Backlog
+- P1 Multi-tenant (white-label SaaS)

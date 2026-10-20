@@ -1402,6 +1402,9 @@ async def ai_extract_fields(lot_id: str, file: UploadFile = File(...), user: dic
     return {"suggestions": data, "excerpt": text[:400], "book_text": text[:40000], "filename": file.filename or "arquivo"}
 
 
+_ENUM_SPEC_KEYS = {"tipo", "status", "correcao", "juros", "juros_tipo", "balao", "periodicidade"}
+
+
 @api_router.patch("/loteamentos/{lot_id}/specs-merge")
 async def merge_specs(lot_id: str, request: Request, user: dict = Depends(require_master)):
     doc = await db.loteamentos.find_one({"id": lot_id}, {"_id": 0})
@@ -1413,6 +1416,8 @@ async def merge_specs(lot_id: str, request: Request, user: dict = Depends(requir
         if isinstance(vals, dict):
             specs.setdefault(section, {})
             for k, v in vals.items():
+                if isinstance(v, str) and k in _ENUM_SPEC_KEYS:
+                    v = re.sub(r"[\s\-]+", "_", v.strip().lower()).replace("igp_m", "igpm")
                 if isinstance(v, list):
                     cur = specs[section].get(k) or []
                     specs[section][k] = cur + [x for x in v if x and x not in cur]

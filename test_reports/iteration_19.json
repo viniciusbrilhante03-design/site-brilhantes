@@ -1,0 +1,36 @@
+{
+  "summary": "Tested all 6 requested features (backend pytest + Playwright UI). Everything works end to end: corretor 60-day edit lock (locked button + toast, edit/save of recent sales returns 200 with 'Venda atualizada!', so the old 404 is fixed), the 5 new infra options, multiple 'Outro' entries (add/del/persist), gallery drag-and-drop reorder (Capa badge, persists after reload), corretor Resumo 'Informações técnicas' section, and Base IA extraction with the real OpenAI key (33 suggestion rows across all 5 sections + detailed resumo; apply merges specs + adds knowledge item 'Arquivo: <filename>'). One display bug: values the AI returns are saved without being normalized to the values the form and the corretor view expect.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/loteamentos/{id}/ai-extract + PATCH specs-merge", "issue": "AI values are saved as-is, without normalizing them to the values the form expects. Seen in a real run: comercial.correcao='IPCA' (the form and CORRECAO map expect 'ipca'), so the Correção row is hidden in the corretor view and the Select shows blank. juros_pct='0,5% a.m.' is shown as 'Com juros (0,5% a.m.%)'. baloes_qtd='semestrais' is shown as 'semestrais balão(ões)'. Numbers come back as numbers in some runs (area_total 120000 with no unit; prazo_construcao '36' with no unit)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "CorretorLoteamentoView (Valores e condições)", "issue": "The Correção row is hidden when the value is uppercase 'IPCA'/'IGPM' (case-sensitive lookup in CORRECAO). 'Juros' always adds '%' even if juros_pct already contains '%'.", "selector": "[data-testid=corretor-lot-resumo]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Corretor dashboard sales table (1920px)", "issues": ["The Vendas table overflows horizontally and the first column ('Data') is clipped at the left edge, even on a desktop viewport"]},
+      {"screen": "LoteamentoSpecsForm Infraestrutura", "issues": ["Infra items the AI extracts that are not in INFRA_OPTIONS (e.g., 'Quadra de tênis') are stored in infraestrutura.items. They are not shown as checkboxes, so the gestor cannot remove them from the form. Consider mapping them into 'outros'."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter19_edit_lock_infra_gallery.py", "/app/test_reports/pytest/pytest_iter19.xml"],
+  "action_items": [
+    "Normalize AI extract values (backend after the AI call or in LoteamentoKnowledge before apply): lowercase correcao/juros/balao/obra.status/tipo; strip '%' from juros_pct/liberacao_pct/percentual; make baloes_qtd numeric; send values not in INFRA_OPTIONS to infraestrutura.outros",
+    "CorretorLoteamentoView: case-insensitive CORRECAO lookup; do not add '%' when juros_pct already contains it",
+    "Fix horizontal clipping of the corretor sales table's first column"
+  ],
+  "critical_code_review_comments": [
+    "reorder_lot_images: no Pydantic validation of body; one update_one per id (fine for <300 images, could use bulk_write)",
+    "_lot_gallery_text sorts by created_at only, not by the new 'order', so the AI's gallery description ignores the user's ordering",
+    "ai_extract truncates text to 90k chars, and image fallback only covers the first 12 pages; very long books are partially read (acceptable, but worth documenting)"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter19_edit_lock_infra_gallery.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% of requested flows; 1 medium display bug from AI value normalization"},
+  "seed_data_creation": "lot_30d7a6afa9 (Apto 1203 - Ed. Aurora) now has tecnicos/obra/comercial/localizacao specs filled by the AI apply, plus items Guarita/Outro/etc. Its 2 TEST_img gallery images were reordered (img_cea861fbb285 is now Capa). TEST_ outros and the 'Arquivo: TEST_' knowledge item were removed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Master UI path: Dashboard > btn-open-team > tab-loteamentos > lot-details-<id> > lot-tab-dados/galeria/base. Corretor path: btn-open-loteamentos > clot-open-<id> > corretor-lot-resumo. Single-lot data comes from GET /api/loteamentos/{id}/details (there is no GET /api/loteamentos/{id}). Locked sale: sale_9398a1f3da62."
+}
