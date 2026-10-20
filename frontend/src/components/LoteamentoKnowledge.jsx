@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { INFRA_OPTIONS } from "@/components/LoteamentoSpecsForm";
 import { Plus, Trash2, HelpCircle, Link2, FileText, MessageSquare, Sparkles, UploadCloud, Loader2, Check, X } from "lucide-react";
 
@@ -24,6 +25,7 @@ export default function LoteamentoKnowledge({ lotId }) {
   const fileRef = useRef(null);
   const [extracting, setExtracting] = useState(false);
   const [sugg, setSugg] = useState(null);   // {partial, resumo}
+  const [replaceBook, setReplaceBook] = useState(true);
 
   const SEC_LABEL = { comercial: "Valores", localizacao: "Localização", tecnicos: "Técnico", infraestrutura: "Infraestrutura", obra: "Obra" };
   const FIELD_LABEL = { valor_a_partir: "Valor a partir de", entrada_minima: "Entrada mínima", max_parcelas: "Máx. parcelas", valor_parcela_inicial: "Parcela inicial", financiamento: "Financiamento", correcao: "Correção", periodicidade: "Periodicidade", juros: "Juros", juros_pct: "Juros %", balao: "Balão", baloes_qtd: "Qtd. balões", baloes_periodicidade: "Period. balões", baloes_valor: "Valor balões", condicoes_especiais: "Condições especiais", diferenciais: "Diferenciais", cidade: "Cidade", estado: "Estado", bairro: "Bairro", endereco: "Endereço", coords: "Coordenadas", dist_centro: "Dist. centro", dist_praia: "Dist. praia", dist_pontos: "Pontos relevantes", acessos: "Acessos", metragem_min: "Metragem mín.", metragem_max: "Metragem máx.", area_total: "Área total", qtd_lotes: "Qtd. lotes", qtd_quadras: "Qtd. quadras", tipo: "Tipo", liberacao_pct: "Liberação %", prazo_construcao: "Prazo construção", restricoes: "Restrições", items: "Itens", status: "Status", percentual: "Percentual", previsao: "Previsão", data_entrega: "Data entrega", observacao: "Observação" };
@@ -68,7 +70,7 @@ export default function LoteamentoKnowledge({ lotId }) {
       if (extra.length) known.push("Outro");
       sp.infraestrutura = { items: known, outros: extra };
     }
-    applyMut.mutate({ specs_partial: sp, append_training: sugg.resumo || "", book_text: sugg.book || "", book_title: sugg.filename || "" });
+    applyMut.mutate({ specs_partial: sp, append_training: sugg.resumo || "", book_text: sugg.book || "", book_title: sugg.filename || "", replace_book: hasBook && replaceBook });
   };
 
   const detQ = useQuery({ queryKey: ["lot-details", lotId], queryFn: async () => (await api.get(`/loteamentos/${lotId}/details`)).data, enabled: !!lotId });
@@ -86,6 +88,7 @@ export default function LoteamentoKnowledge({ lotId }) {
   });
 
   const items = detQ.data?.knowledge || [];
+  const hasBook = items.some((k) => (k.title || "").startsWith("Arquivo:"));
   const questions = qsQ.data || [];
   const valid = type === "qa" ? question.trim() && answer.trim() : content.trim();
 
@@ -96,7 +99,7 @@ export default function LoteamentoKnowledge({ lotId }) {
         <p className="text-xs text-muted-foreground">Book, tabela de preços, PDF ou memorial. A IA lê e sugere os campos — você confirma antes de aplicar.</p>
         <input ref={fileRef} type="file" accept="application/pdf,.txt,.csv,image/*" className="hidden" onChange={onExtract} data-testid="kn-extract-input" />
         <Button variant="outline" size="sm" className="gap-1.5" disabled={extracting} onClick={() => fileRef.current?.click()} data-testid="kn-extract-btn">
-          {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />} {extracting ? "Lendo com a IA..." : "Enviar arquivo"}
+          {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />} {extracting ? "Lendo com a IA..." : hasBook ? "Atualizar book / enviar arquivo" : "Enviar arquivo"}
         </Button>
 
         {sugg && (
@@ -117,6 +120,12 @@ export default function LoteamentoKnowledge({ lotId }) {
             ))}
             {sugg.resumo && <div className="text-xs whitespace-pre-wrap max-h-60 overflow-y-auto" data-testid="kn-sugg-resumo"><span className="text-muted-foreground">Resumo p/ treino: </span>{sugg.resumo}</div>}
             {sugg.book && <div className="text-[11px] text-muted-foreground">O conteúdo completo do arquivo também será salvo na base de conhecimento da IA.</div>}
+            {sugg.book && hasBook && (
+              <label className="flex items-center gap-2 text-xs cursor-pointer" data-testid="kn-replace-book">
+                <Checkbox checked={replaceBook} onCheckedChange={(v) => setReplaceBook(!!v)} data-testid="kn-replace-book-checkbox" />
+                Substituir o book anterior (remove o texto do arquivo antigo da base)
+              </label>
+            )}
             <div className="flex gap-2 pt-1">
               <Button size="sm" onClick={applySugg} disabled={applyMut.isPending} data-testid="kn-sugg-apply">Aplicar selecionados</Button>
               <Button size="sm" variant="ghost" onClick={() => setSugg(null)} data-testid="kn-sugg-cancel">Ignorar</Button>

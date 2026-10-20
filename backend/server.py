@@ -1425,13 +1425,16 @@ async def merge_specs(lot_id: str, request: Request, user: dict = Depends(requir
                     specs[section][k] = v
     upd = {"specs": specs}
     at = (body.get("append_training") or "").strip()
-    if at:
-        upd["ai_training"] = ((doc.get("ai_training") or "") + "\n" + at).strip()
     book = (body.get("book_text") or "").strip()
+    if at and not book:
+        upd["ai_training"] = ((doc.get("ai_training") or "") + "\n" + at).strip()
     if book:
+        if body.get("replace_book"):
+            await db.loteamentos.update_one({"id": lot_id}, {"$pull": {"knowledge": {"title": {"$regex": "^Arquivo:"}}}})
+        content = (f"RESUMO:\n{at}\n\nTEXTO COMPLETO:\n" if at else "") + book[:40000]
         await db.loteamentos.update_one({"id": lot_id}, {"$push": {"knowledge": {
             "id": f"kn_{uuid.uuid4().hex[:8]}", "type": "texto",
-            "title": f"Arquivo: {(body.get('book_title') or 'book').strip()}", "content": book[:40000],
+            "title": f"Arquivo: {(body.get('book_title') or 'book').strip()}", "content": content,
             "question": "", "answer": "", "created_at": datetime.now(timezone.utc).isoformat()}}})
     loc = specs.get("localizacao") or {}
     lat, lng = _parse_latlng(loc.get("coords"))

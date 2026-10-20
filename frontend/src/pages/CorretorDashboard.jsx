@@ -192,6 +192,7 @@ export default function CorretorDashboard() {
               onOpenExport={() => setExportOpen(true)}
               onOpenAttachments={(x) => setAttachSale(x)}
               editDeadlineDays={60}
+              compact
             />
           </div>
           <div className="space-y-6 min-w-0"><RankingCard /><GoalsCard goals={goalsQ.data} /></div>

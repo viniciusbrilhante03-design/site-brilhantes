@@ -534,3 +534,5 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
 - Testes: iteration_19 (100%).
 ## Backlog
 - P1 Multi-tenant (white-label SaaS)
+- 2026-06: Tabela de vendas do Corretor compacta (prop `compact` em SalesSection): sem rolagem lateral no desktop; cartões no celular (sale-card-<id>).
+- 2026-06: Base IA — "Atualizar book": checkbox "Substituir o book anterior" (replace_book) remove os itens "Arquivo:" antigos; resumo agora fica dentro do item do book (não acumula em ai_training).

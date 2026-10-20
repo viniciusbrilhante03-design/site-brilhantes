@@ -30,7 +30,8 @@ function statusOf(s) {
   return (s.installments || []).some((i) => !i.received) ? "receber" : "quitado";
 }
 
-export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicate, onDelete, onTransfer, onCancel, onOpenInstallments, onImport, onOpenExport, onOpenAttachments, bulkEnabled = false, brokers = [], onBulkDelete, onBulkTransfer, editDeadlineDays }) {
+export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicate, onDelete, onTransfer, onCancel, onOpenInstallments, onImport, onOpenExport, onOpenAttachments, bulkEnabled = false, brokers = [], onBulkDelete, onBulkTransfer, editDeadlineDays, compact = false }) {
+  const hc = compact ? "hidden" : "";
   const [q, setQ] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [f, setF] = useState(emptyFilters);
@@ -96,6 +97,73 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
 
   const doBulkDelete = () => { onBulkDelete?.(selIds); clearSel(); };
   const doBulkTransfer = () => { if (!bulkBroker) return; onBulkTransfer?.(selIds, bulkBroker); setTransferOpen(false); setBulkBroker(""); clearSel(); };
+  const renderActions = (s) => (
+                      <div className={compact ? "grid grid-cols-3 items-center justify-items-center gap-0.5 w-fit ml-auto" : "flex items-center justify-end gap-1"}>
+                        <Button data-testid={`btn-attachments-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
+                          title="Anexos" onClick={() => onOpenAttachments(s)}>
+                          <Paperclip className="h-4 w-4" />
+                        </Button>
+                        <Button data-testid={`btn-installments-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
+                          title="Fluxo a receber" onClick={() => onOpenInstallments(s)}>
+                          <Wallet className="h-4 w-4" />
+                        </Button>
+                        {editDeadlineDays && s.created_at && (Date.now() - new Date(s.created_at).getTime()) > editDeadlineDays * 864e5 ? (
+                          <Button data-testid={`btn-edit-locked-${s.id}`} variant="ghost" size="icon" className="h-8 w-8 opacity-50"
+                            title="Prazo de edição expirado, contate o gestor"
+                            onClick={() => toast.warning("Prazo de edição expirado, contate o gestor.")}>
+                            <Lock className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button data-testid={`btn-edit-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
+                            title="Editar" onClick={() => onEdit(s)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {onDuplicate && (
+                          <Button data-testid={`btn-duplicate-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
+                            title="Duplicar (novo lote p/ mesmo cliente)" onClick={() => onDuplicate(s)}>
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {onTransfer && (
+                          <Button data-testid={`btn-transfer-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
+                            title="Transferir para outro corretor" onClick={() => onTransfer(s)}>
+                            <ArrowRightLeft className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {onCancel && (
+                          <Button data-testid={`btn-cancel-${s.id}`} variant="ghost" size="icon" className="h-8 w-8 text-[hsl(var(--amber))]"
+                            title="Cancelar / distrato" onClick={() => onCancel(s)}>
+                            <Ban className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button data-testid={`btn-delete-${s.id}`} variant="ghost" size="icon" className="h-8 w-8 text-destructive"
+                              title="Excluir">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Excluir venda?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Esta ação não pode ser desfeita. A venda de "{s.property_name}" será removida.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction data-testid={`confirm-delete-${s.id}`}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={() => onDelete(s.id)}>
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+  );
+
   return (
     <Card className="rounded-xl border-border/60 overflow-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-5 border-b border-border/60">
@@ -219,18 +287,48 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      {compact && (
+        <div className="md:hidden divide-y divide-border/60" data-testid="sales-mobile-list">
+          {loading ? <div className="text-center py-10 text-muted-foreground text-sm">Carregando...</div>
+            : filtered.length === 0 ? <div className="text-center py-10 text-muted-foreground text-sm">Nenhuma venda encontrada.</div>
+            : filtered.map((s) => {
+              const pend = (s.installments || []).some((i) => !i.received);
+              const { broker } = splitComm(s);
+              const ql = [s.quadra && `Qd ${s.quadra}`, s.lote && `Lt ${s.lote}`].filter(Boolean).join(" · ");
+              return (
+                <div key={s.id} className="p-4 space-y-2" data-testid={`sale-card-${s.id}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{s.property_name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{[formatDateBR(s.sale_date), ql, s.client_name].filter(Boolean).join(" · ")}</div>
+                    </div>
+                    {s.parcelado ? (pend ? <Badge variant="outline" className="border-[hsl(var(--amber))] text-[hsl(var(--amber))] text-[10px] shrink-0">A receber</Badge>
+                      : <Badge className="bg-[hsl(var(--emerald))] text-white text-[10px] shrink-0">Quitado</Badge>)
+                      : <Badge variant="secondary" className="text-[10px] shrink-0">À vista</Badge>}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div><div className="text-muted-foreground">Valor</div><div className="font-semibold tabular">{brl(s.sale_value)}</div></div>
+                    <div><div className="text-muted-foreground">Minha comissão</div><div className="font-semibold tabular">{brl(broker)}</div></div>
+                    <div><div className="text-muted-foreground">Entrada</div><div className="font-semibold tabular">{brl(s.entrada)}</div></div>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-1">{renderActions(s)}</div>
+                </div>
+              );
+            })}
+        </div>
+      )}
+      <div className={`overflow-x-auto ${compact ? "hidden md:block" : ""}`}>
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               {bulkEnabled && <TableHead className="w-10"><Checkbox checked={allSelected} onCheckedChange={toggleAll} data-testid="sales-select-all" /></TableHead>}
               <TableHead>Data</TableHead>
               <TableHead>Loteamento</TableHead>
-              <TableHead>Corretor</TableHead>
+              <TableHead className={hc}>Corretor</TableHead>
               <TableHead className="text-right">Valor</TableHead>
               <TableHead className="text-right">Comissão</TableHead>
-              <TableHead className="text-right">Entrada</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead className={`text-right ${hc}`}>Entrada</TableHead>
+              <TableHead className={hc}>Status</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -246,11 +344,15 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
                 const pend = (s.installments || []).some((i) => !i.received);
                 const { broker, agency } = splitComm(s);
                 const ql = [s.quadra && `Qd ${s.quadra}`, s.lote && `Lt ${s.lote}`].filter(Boolean).join(" · ");
+                const statusBadge = s.parcelado ? (
+                  pend ? <Badge variant="outline" className="border-[hsl(var(--amber))] text-[hsl(var(--amber))] text-[10px]">A receber</Badge>
+                    : <Badge className="bg-[hsl(var(--emerald))] hover:bg-[hsl(var(--emerald))] text-white text-[10px]">Quitado</Badge>
+                ) : <Badge variant="secondary" className="text-[10px]">À vista</Badge>;
                 return (
                   <TableRow key={s.id} data-testid={`sale-row-${s.id}`} className="group">
                     {bulkEnabled && <TableCell><Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleOne(s.id)} data-testid={`sale-select-${s.id}`} /></TableCell>}
-                    <TableCell className="tabular text-sm whitespace-nowrap">{formatDateBR(s.sale_date)}</TableCell>
-                    <TableCell className="font-medium max-w-[220px]">
+                    <TableCell className="tabular text-sm whitespace-nowrap" data-testid={`sale-date-${s.id}`}>{formatDateBR(s.sale_date)}</TableCell>
+                    <TableCell className={`font-medium ${compact ? "max-w-[180px]" : "max-w-[220px]"}`}>
                       <div className="truncate">{s.property_name}</div>
                       {(ql || s.client_name) && (
                         <div className="text-xs text-muted-foreground font-normal truncate">
@@ -258,91 +360,26 @@ export default function SalesSection({ sales, loading, onAdd, onEdit, onDuplicat
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm">{s.broker_name}</TableCell>
-                    <TableCell className="text-right tabular font-semibold">{brl(s.sale_value)}</TableCell>
-                    <TableCell className="text-right tabular text-sm">
-                      {brl(s.commission_value)}
-                      <div className="text-[11px] text-muted-foreground">
-                        Corr {brl(broker)} · Imob {brl(agency)}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular text-sm">{brl(s.entrada)}</TableCell>
-                    <TableCell>
-                      {s.parcelado ? (
-                        pend ? (
-                          <Badge variant="outline" className="border-[hsl(var(--amber))] text-[hsl(var(--amber))] text-[10px]">A receber</Badge>
-                        ) : (
-                          <Badge className="bg-[hsl(var(--emerald))] hover:bg-[hsl(var(--emerald))] text-white text-[10px]">Quitado</Badge>
-                        )
-                      ) : (
-                        <Badge variant="secondary" className="text-[10px]">À vista</Badge>
+                    <TableCell className={`text-sm ${hc}`}>{s.broker_name}</TableCell>
+                    <TableCell className="text-right tabular font-semibold whitespace-nowrap">
+                      {brl(s.sale_value)}
+                      {compact && (
+                        <div className="mt-0.5 flex flex-col items-end gap-0.5 font-normal" data-testid={`sale-compact-info-${s.id}`}>
+                          <span className="text-[11px] text-muted-foreground">Entrada {brl(s.entrada)}</span>
+                          {statusBadge}
+                        </div>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button data-testid={`btn-attachments-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
-                          title="Anexos" onClick={() => onOpenAttachments(s)}>
-                          <Paperclip className="h-4 w-4" />
-                        </Button>
-                        <Button data-testid={`btn-installments-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
-                          title="Fluxo a receber" onClick={() => onOpenInstallments(s)}>
-                          <Wallet className="h-4 w-4" />
-                        </Button>
-                        {editDeadlineDays && s.created_at && (Date.now() - new Date(s.created_at).getTime()) > editDeadlineDays * 864e5 ? (
-                          <Button data-testid={`btn-edit-locked-${s.id}`} variant="ghost" size="icon" className="h-8 w-8 opacity-50"
-                            title="Prazo de edição expirado, contate o gestor"
-                            onClick={() => toast.warning("Prazo de edição expirado, contate o gestor.")}>
-                            <Lock className="h-4 w-4" />
-                          </Button>
-                        ) : (
-                          <Button data-testid={`btn-edit-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
-                            title="Editar" onClick={() => onEdit(s)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {onDuplicate && (
-                          <Button data-testid={`btn-duplicate-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
-                            title="Duplicar (novo lote p/ mesmo cliente)" onClick={() => onDuplicate(s)}>
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {onTransfer && (
-                          <Button data-testid={`btn-transfer-${s.id}`} variant="ghost" size="icon" className="h-8 w-8"
-                            title="Transferir para outro corretor" onClick={() => onTransfer(s)}>
-                            <ArrowRightLeft className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {onCancel && (
-                          <Button data-testid={`btn-cancel-${s.id}`} variant="ghost" size="icon" className="h-8 w-8 text-[hsl(var(--amber))]"
-                            title="Cancelar / distrato" onClick={() => onCancel(s)}>
-                            <Ban className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button data-testid={`btn-delete-${s.id}`} variant="ghost" size="icon" className="h-8 w-8 text-destructive"
-                              title="Excluir">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Excluir venda?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Esta ação não pode ser desfeita. A venda de "{s.property_name}" será removida.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction data-testid={`confirm-delete-${s.id}`}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                onClick={() => onDelete(s.id)}>
-                                Excluir
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                    <TableCell className="text-right tabular text-sm">
+                      {brl(s.commission_value)}
+                      <div className={`text-[11px] text-muted-foreground ${compact ? "whitespace-nowrap flex flex-col" : ""}`}>
+                        {compact ? <><span>Corr {brl(broker)}</span><span>Imob {brl(agency)}</span></> : <>Corr {brl(broker)} · Imob {brl(agency)}</>}
                       </div>
+                    </TableCell>
+                    <TableCell className={`text-right tabular text-sm ${hc}`}>{brl(s.entrada)}</TableCell>
+                    <TableCell className={hc}>{statusBadge}</TableCell>
+                    <TableCell>
+                      {renderActions(s)}
                     </TableCell>
                   </TableRow>
                 );
