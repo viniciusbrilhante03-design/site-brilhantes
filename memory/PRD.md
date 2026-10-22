@@ -536,3 +536,4 @@ PENDENTE: FASES 4 a 9. (Fase 4 = comemoração + Stories 9:16; Fase 7 = IA OpenA
 - P1 Multi-tenant (white-label SaaS)
 - 2026-06: Tabela de vendas do Corretor compacta (prop `compact` em SalesSection): sem rolagem lateral no desktop; cartões no celular (sale-card-<id>).
 - 2026-06: Base IA — "Atualizar book": checkbox "Substituir o book anterior" (replace_book) remove os itens "Arquivo:" antigos; resumo agora fica dentro do item do book (não acumula em ai_training).
+- 2026-06: Supabase (cópia/backup): REST com SUPABASE_URL + SUPABASE_SECRET_KEY (backend/.env); tabela única public.brilhantes_backup(collection, doc_id, data jsonb, synced_at) — usuário precisa criá-la via SQL Editor. Endpoints: POST /api/supabase/sync, GET /api/supabase/status (master), POST /api/cron/supabase-sync (cron a cada 6h). Cron installments-daily removido (limite 5) — parcelas agora rodam junto do cron birthdays. Botão "Copiar agora" no ExportDialog. Sem senhas/imagens binárias.

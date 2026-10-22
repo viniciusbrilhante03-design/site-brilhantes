@@ -3098,6 +3098,7 @@ async def cron_birthdays(background_tasks: BackgroundTasks,
             return {"ok": True, "duplicate": True}
         await db.cron_runs.insert_one({"run_id": run_id, "at": datetime.now(timezone.utc).isoformat()})
     background_tasks.add_task(_process_birthdays)
+    background_tasks.add_task(_process_installments)
     return {"ok": True}
 
 
@@ -3958,6 +3959,84 @@ async def export_backup_json(user: dict = Depends(require_master)):
     ts = _br_now().strftime("%Y%m%d")
     return Response(content=payload, media_type="application/json",
                     headers={"Content-Disposition": f'attachment; filename="backup-brilhantes-{ts}.json"'})
+
+
+# ---------------- Supabase mirror (cópia dos dados) ----------------
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY", "")
+SUPABASE_TABLE = "brilhantes_backup"
+_SB_SKIP = {"password_reset_tokens", "password_reset_requests", "oauth_states", "user_sessions",
+            "login_attempts", "cron_runs", "attachments"}
+
+
+async def _supabase_sync():
+    import json as _json
+    st = {"key": "supabase_sync", "running": True, "started_at": datetime.now(timezone.utc).isoformat()}
+    await db.app_settings.update_one({"key": "supabase_sync"}, {"$set": st}, upsert=True)
+    total, error = 0, ""
+    try:
+        if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
+            raise RuntimeError("Supabase não configurado")
+        headers = {"apikey": SUPABASE_SECRET_KEY, "Authorization": f"Bearer {SUPABASE_SECRET_KEY}",
+                   "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal"}
+        url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?on_conflict=collection,doc_id"
+        now = datetime.now(timezone.utc).isoformat()
+        async with httpx.AsyncClient(timeout=60) as client:
+            for cn in await db.list_collection_names():
+                if cn in _SB_SKIP:
+                    continue
+                proj = {"data": 0} if cn == "lot_images" else None
+                docs = await db[cn].find({}, proj).to_list(100000)
+                rows = []
+                for d in docs:
+                    oid = str(d.pop("_id", ""))
+                    if cn == "users":
+                        d.pop("password_hash", None)
+                        d.pop("google_calendar", None)
+                    did = str(d.get("id") or d.get("user_id") or d.get("key") or oid)
+                    rows.append({"collection": cn, "doc_id": did, "synced_at": now,
+                                 "data": _json.loads(_json.dumps(d, default=str))})
+                for i in range(0, len(rows), 500):
+                    r = await client.post(url, headers=headers, json=rows[i:i + 500])
+                    if r.status_code >= 300:
+                        raise RuntimeError(f"{cn}: {r.status_code} {r.text[:200]}")
+                total += len(rows)
+    except Exception as e:
+        error = str(e)
+        logger.warning(f"supabase sync failed: {e}")
+    await db.app_settings.update_one({"key": "supabase_sync"}, {"$set": {
+        "running": False, "last_at": datetime.now(timezone.utc).isoformat(), "last_count": total,
+        "last_error": error}}, upsert=True)
+
+
+@api_router.post("/supabase/sync")
+async def supabase_sync_now(background_tasks: BackgroundTasks, user: dict = Depends(require_master)):
+    background_tasks.add_task(_supabase_sync)
+    return {"ok": True}
+
+
+@api_router.get("/supabase/status")
+async def supabase_status(user: dict = Depends(require_master)):
+    d = await db.app_settings.find_one({"key": "supabase_sync"}, {"_id": 0}) or {}
+    return {"configured": bool(SUPABASE_URL and SUPABASE_SECRET_KEY), "running": d.get("running", False),
+            "last_at": d.get("last_at"), "last_count": d.get("last_count", 0), "last_error": d.get("last_error", "")}
+
+
+@api_router.post("/cron/supabase-sync")
+async def cron_supabase_sync(background_tasks: BackgroundTasks,
+                             authorization: Optional[str] = Header(None),
+                             x_webhook_id: Optional[str] = Header(None)):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    if not WEBHOOK_CRON_SECRET or not token or not hmac.compare_digest(token, WEBHOOK_CRON_SECRET):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    run_id = x_webhook_id or ""
+    if run_id:
+        if await db.cron_runs.find_one({"run_id": run_id}):
+            return {"ok": True, "duplicate": True}
+        await db.cron_runs.insert_one({"run_id": run_id, "at": datetime.now(timezone.utc).isoformat()})
+    background_tasks.add_task(_supabase_sync)
+    return {"ok": True}
 
 
 @api_router.get("/export/pdf")

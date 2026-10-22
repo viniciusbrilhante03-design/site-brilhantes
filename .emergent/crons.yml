@@ -1,15 +1,15 @@
 crons:
   - name: birthdays-daily
-    description: "Avisa o corretor responsável e o gestor dos aniversariantes do dia e do mês"
+    description: "Avisa aniversariantes do dia/mês e parcelas de comissão vencidas ou vencendo em 3 dias"
     cron: "0 12 * * *"
     endpoint: "{{BASE_URL}}/api/cron/birthdays"
     method: POST
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     enabled: true
-  - name: installments-daily
-    description: "Avisa gestor e corretor sobre parcelas de comissão vencidas ou vencendo em 3 dias"
-    cron: "30 12 * * *"
-    endpoint: "{{BASE_URL}}/api/cron/installments"
+  - name: supabase-sync
+    description: "A cada 6 horas copia vendas, clientes, loteamentos e demais dados para o Supabase"
+    cron: "0 */6 * * *"
+    endpoint: "{{BASE_URL}}/api/cron/supabase-sync"
     method: POST
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     enabled: true

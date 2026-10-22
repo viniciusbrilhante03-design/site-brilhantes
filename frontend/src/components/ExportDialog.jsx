@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FileSpreadsheet, FileText, Users } from "lucide-react";
+import { FileSpreadsheet, FileText, Users, Database } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/api";
 
@@ -101,7 +101,31 @@ export default function ExportDialog({ open, onOpenChange, onExport }) {
           </Button>
           <p className="text-[11px] text-muted-foreground">Use o <strong>JSON</strong> ao migrar para outra ferramenta (ex.: Bolt), pois ela não aceita .xlsx.</p>
         </div>
+        <SupabaseSync open={open} />
       </DialogContent>
     </Dialog>
   );
 }
+
+function SupabaseSync({ open }) {
+  const [st, setSt] = useState(null);
+  const load = () => api.get("/supabase/status").then((r) => setSt(r.data)).catch(() => setSt(null));
+  useEffect(() => { if (open) load(); }, [open]);
+  useEffect(() => { if (st?.running) { const t = setTimeout(load, 3000); return () => clearTimeout(t); } }, [st]);
+  if (!st?.configured) return null;
+  const run = async () => { await api.post("/supabase/sync"); setSt({ ...st, running: true }); toast.success("Cópia para o Supabase iniciada!"); };
+  return (
+    <div className="pt-2 border-t border-border/60 space-y-2" data-testid="supabase-sync">
+      <p className="text-xs text-muted-foreground">Cópia automática no <strong>Supabase</strong> a cada 6 horas.</p>
+      <div className="text-xs" data-testid="supabase-status">
+        {st.running ? "Copiando..." : st.last_at
+          ? <>Última cópia: {new Date(st.last_at).toLocaleString("pt-BR")} · {st.last_count} registros{st.last_error && <span className="text-destructive block">Erro: {st.last_error}</span>}</>
+          : "Nenhuma cópia feita ainda."}
+      </div>
+      <Button data-testid="supabase-sync-now" variant="outline" className="w-full" disabled={st.running} onClick={run}>
+        <Database className="h-4 w-4 mr-1.5" /> {st.running ? "Copiando..." : "Copiar agora para o Supabase"}
+      </Button>
+    </div>
+  );
+}
+
